@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Tab
@@ -63,7 +62,6 @@ fun TabOverviewSheet(
     onTabSelected: (String) -> Unit,
     onTabClosed: (String) -> Unit,
     onNewTab: (Boolean) -> Unit,
-    onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedCategoryIndex by remember { mutableIntStateOf(0) }
@@ -73,28 +71,20 @@ fun TabOverviewSheet(
     val currentDisplayTabs = if (selectedCategoryIndex == 0) normalTabs else incognitoTabs
     val activeAccent = if (selectedCategoryIndex == 0) ElectricOrange else ElectricOrangeLight
 
-    // Halaman Penuh (Full-Screen Tab Switcher ala Chrome Android - Zero Floating Sheet)
+    // Halaman Penuh Pengelola Tab (Tanpa Tombol Back di Layar - Gunakan Navigasi Back Sistem HP)
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(OledBlack)
     ) {
-        // Header Bar Layar Penuh
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp)
                 .background(OledBlack)
-                .padding(horizontal = 8.dp)
+                .padding(horizontal = 16.dp)
         ) {
-            IconButton(onClick = onDismissRequest) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Kembali",
-                    tint = TextPrimary
-                )
-            }
             Text(
                 text = "Pengelola Tab (${tabs.size})",
                 style = MaterialTheme.typography.titleMedium,
@@ -125,7 +115,6 @@ fun TabOverviewSheet(
 
         HorizontalDivider(color = DarkOutline)
 
-        // Tab Row Pemilih Kategori (Biasa vs Samaran)
         TabRow(
             selectedTabIndex = selectedCategoryIndex,
             containerColor = DarkSurface,

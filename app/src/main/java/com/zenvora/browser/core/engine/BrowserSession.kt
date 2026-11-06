@@ -310,6 +310,10 @@ class BrowserSession(
         geckoSession.reload(GeckoSession.LOAD_FLAGS_BYPASS_CACHE)
     }
 
+    fun enterFullScreen() {
+        _tabState.update { it.copy(isFullScreen = true) }
+    }
+
     fun exitFullScreen() {
         geckoSession.exitFullScreen()
         _tabState.update { it.copy(isFullScreen = false) }

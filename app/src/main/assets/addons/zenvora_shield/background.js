@@ -1,6 +1,6 @@
 "use strict";
 
-// Daftar domain iklan, tracker, pop-under, dan jaringan iklan situs streaming modern
+// Daftar komprehensif jaringan iklan global, regional, pop-under, dan iklan situs streaming (Gaya Brave Shields)
 const BLOCKED_DOMAINS = [
   "doubleclick.net",
   "googlesyndication.com",
@@ -34,13 +34,18 @@ const BLOCKED_DOMAINS = [
   "propellerclick.com",
   "adsterra.com",
   "adsterratech.com",
+  "highperformanceformat.com",
+  "profitabledisplaynetwork.com",
   "exoclick.com",
   "exosrv.com",
+  "realsrv.com",
   "juicyads.com",
   "hilltopads.net",
   "clickadu.com",
+  "clickaine.com",
   "trafficjunky.net",
   "trafficstars.com",
+  "trafficfactory.biz",
   "mgid.com",
   "revcontent.com",
   "bidvertiser.com",
@@ -57,7 +62,6 @@ const BLOCKED_DOMAINS = [
   "adrecover.com",
   "fundingchoicesmessages.google.com",
   "getadmiral.com",
-  "SourcePoint",
   "consensu.org",
   "onetrust.com",
   "bidgear.com",
@@ -71,11 +75,90 @@ const BLOCKED_DOMAINS = [
   "plugrush.com",
   "ero-advertising.com",
   "a-ads.com",
-  "coinzilla.com"
+  "coinzilla.com",
+  "adskeeper.co.uk",
+  "adskeeper.com",
+  "adnow.com",
+  "adcash.com",
+  "adblade.com",
+  "adbooth.com",
+  "adreactor.com",
+  "adspirit.de",
+  "adtelligent.com",
+  "adthrive.com",
+  "mediavine.com",
+  "monumetric.com",
+  "playwire.com",
+  "vidoomy.com",
+  "viads.com",
+  "spotxchange.com",
+  "springserve.com",
+  "improvedigital.com",
+  "indexexchange.com",
+  "33across.com",
+  "sovrn.com",
+  "lijit.com",
+  "sharethrough.com",
+  "triplelift.com",
+  "gumgum.com",
+  "kargo.com",
+  "nativo.com",
+  "zemanta.com",
+  "connatix.com",
+  "primis.tech",
+  "aniview.com",
+  "brid.tv",
+  "jwpltx.com"
 ];
 
-// Pola URL script anti-adblock / bait yang harus dinetralkan dengan stub palsu (bukan cancel)
-// agar <script onload> sukses dan situs tidak mendeteksi adblock
+// Kata kunci heuristik untuk memblokir iklan slot/judi/banner/pop-under pihak ketiga di situs streaming Indonesia
+const THIRD_PARTY_AD_KEYWORDS = [
+  "/pagead/",
+  "/adserver",
+  "/adframe",
+  "/adbanner",
+  "/ads/",
+  "/adv/",
+  "/banner/",
+  "/banners/",
+  "/popunder",
+  "/pop_under",
+  "/pop.js",
+  "/vast.xml",
+  "/vmap.xml",
+  "/preroll",
+  "slotgacor",
+  "slot-gacor",
+  "slot88",
+  "maxwin",
+  "togel",
+  "sbobet",
+  "idnplay",
+  "pkvgames",
+  "pragmatic",
+  "joker123",
+  "judol",
+  "zeus88",
+  "hoki88",
+  "cuan88",
+  "gacor88",
+  "bola88",
+  "poker88"
+];
+
+// TLD yang sangat sering dipakai oleh jaringan iklan pop-under rotasi otomatis
+const SUSPICIOUS_THIRD_PARTY_TLDS = [
+  ".icu",
+  ".cfd",
+  ".sbs",
+  ".buzz",
+  ".loan",
+  ".men",
+  ".date",
+  ".click"
+];
+
+// Pola URL script anti-adblock / bait yang dinetralkan dengan stub 200 OK
 const BAIT_SCRIPT_PATTERNS = [
   "adsbygoogle.js",
   "show_ads.js",
@@ -84,22 +167,10 @@ const BAIT_SCRIPT_PATTERNS = [
   "adblock-detector",
   "adblockdetector",
   "ads-beacon.js",
-  "prebid"
+  "prebid",
+  "admiral"
 ];
 
-const URL_PATH_PATTERNS = [
-  "/pagead/",
-  "/adserver/",
-  "/adframe.",
-  "/adbanner/",
-  "/popunder",
-  "/pop_under",
-  "/vast.xml",
-  "/vmap.xml",
-  "/preroll"
-];
-
-// Stub JS palsu dalam base64 yang menyimulasikan objek iklan berhasil dimuat
 const NEUTERED_AD_SCRIPT_DATA_URL =
   "data:application/javascript;base64," +
   btoa(
@@ -112,11 +183,21 @@ const NEUTERED_AD_SCRIPT_DATA_URL =
     "pubads:function(){return{enableSingleRequest:function(){},collapseEmptyDivs:function(){},addEventListener:function(){},setTargeting:function(){return this;},refresh:function(){}};}};"
   );
 
+const TRANSPARENT_PIXEL_DATA_URL =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+function getRootDomain(hostname) {
+  if (!hostname) return "";
+  const parts = hostname.toLowerCase().split(".");
+  if (parts.length <= 2) return hostname.toLowerCase();
+  return parts.slice(-2).join(".");
+}
+
 function isDomainBlocked(hostname) {
   if (!hostname) return false;
   const lower = hostname.toLowerCase();
   for (let i = 0; i < BLOCKED_DOMAINS.length; i++) {
-    const d = BLOCKED_DOMAINS[i].toLowerCase();
+    const d = BLOCKED_DOMAINS[i];
     if (lower === d || lower.endsWith("." + d)) {
       return true;
     }
@@ -134,10 +215,20 @@ function isBaitScript(url) {
   return false;
 }
 
-function isBlockedPath(url) {
+function hasAdKeyword(url) {
   const lower = url.toLowerCase();
-  for (let i = 0; i < URL_PATH_PATTERNS.length; i++) {
-    if (lower.indexOf(URL_PATH_PATTERNS[i]) !== -1) {
+  for (let i = 0; i < THIRD_PARTY_AD_KEYWORDS.length; i++) {
+    if (lower.indexOf(THIRD_PARTY_AD_KEYWORDS[i]) !== -1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasSuspiciousTld(hostname) {
+  const lower = hostname.toLowerCase();
+  for (let i = 0; i < SUSPICIOUS_THIRD_PARTY_TLDS.length; i++) {
+    if (lower.endsWith(SUSPICIOUS_THIRD_PARTY_TLDS[i])) {
       return true;
     }
   }
@@ -151,30 +242,43 @@ browser.webRequest.onBeforeRequest.addListener(
       return {};
     }
 
-    // 1. Jika script umpan anti-adblock (seperti adsbygoogle.js), arahkan ke stub sukses
+    // 1. Jika script umpan anti-adblock, arahkan ke stub sukses agar tidak terdeteksi
     if (details.type === "script" && isBaitScript(url)) {
       return { redirectUrl: NEUTERED_AD_SCRIPT_DATA_URL };
     }
 
-    let hostname = "";
+    let reqHost = "";
+    let docHost = "";
     try {
-      hostname = new URL(url).hostname;
+      reqHost = new URL(url).hostname;
+      if (details.originUrl || details.documentUrl) {
+        docHost = new URL(details.originUrl || details.documentUrl).hostname;
+      }
     } catch (e) {
       return {};
     }
 
-    // 2. Blokir navigasi main_frame hanya jika mengarah ke jaringan pop-under/redirect iklan
+    const isThirdParty = docHost && getRootDomain(reqHost) !== getRootDomain(docHost);
+
+    // 2. Blokir navigasi main_frame hanya jika mengarah ke domain iklan / pop-under
     if (details.type === "main_frame") {
-      if (isDomainBlocked(hostname)) {
+      if (isDomainBlocked(reqHost)) {
         return { cancel: true };
       }
       return {};
     }
 
-    // 3. Untuk sub-resource (script, xhr, iframe, image, media, beacon), blokir jika cocok
-    if (isDomainBlocked(hostname) || isBlockedPath(url)) {
+    // 3. Blokir sub-resource dari domain iklan, kata kunci iklan/judi, atau script/iframe pihak ketiga dari TLD mencurigakan
+    if (
+      isDomainBlocked(reqHost) ||
+      hasAdKeyword(url) ||
+      (isThirdParty && hasSuspiciousTld(reqHost) && (details.type === "script" || details.type === "sub_frame" || details.type === "xmlhttprequest"))
+    ) {
       if (details.type === "script") {
         return { redirectUrl: NEUTERED_AD_SCRIPT_DATA_URL };
+      }
+      if (details.type === "image" || details.type === "imageset") {
+        return { redirectUrl: TRANSPARENT_PIXEL_DATA_URL };
       }
       if (details.type === "sub_frame") {
         return { redirectUrl: "about:blank" };

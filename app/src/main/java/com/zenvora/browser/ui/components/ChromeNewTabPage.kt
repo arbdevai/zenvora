@@ -18,9 +18,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
@@ -36,19 +33,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,7 +47,6 @@ import androidx.compose.ui.unit.sp
 import com.zenvora.browser.core.network.NetworkStats
 import com.zenvora.browser.data.local.entity.BookmarkEntity
 import com.zenvora.browser.ui.theme.DarkOutline
-import com.zenvora.browser.ui.theme.DarkSurfaceContainer
 import com.zenvora.browser.ui.theme.DarkSurfaceVariant
 import com.zenvora.browser.ui.theme.ElectricOrange
 import com.zenvora.browser.ui.theme.ElectricOrangeLight
@@ -80,8 +70,6 @@ fun ChromeNewTabPage(
     onOpenNetworkSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var searchQuery by remember { mutableStateOf("") }
-    val focusManager = LocalFocusManager.current
     val accentColor = if (isIncognito) ElectricOrangeLight else ElectricOrange
 
     val defaultQuickSites = remember {
@@ -97,6 +85,7 @@ fun ChromeNewTabPage(
         )
     }
 
+    // Halaman Beranda Bersih Tanpa Duplikasi Search Bar (Fokus 1 Search Bar Utama di Top Omnibox)
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
@@ -106,7 +95,7 @@ fun ChromeNewTabPage(
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 28.dp)
     ) {
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Header Identitas ZENVORA Murni
         Row(
@@ -116,7 +105,7 @@ fun ChromeNewTabPage(
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(46.dp)
                     .clip(CircleShape)
                     .background(OledBlack)
                     .border(1.5.dp, accentColor, CircleShape)
@@ -140,7 +129,7 @@ fun ChromeNewTabPage(
                     )
                 )
                 Text(
-                    text = if (isIncognito) "Mode Privasi Tanpa Riwayat" else "Gecko Engine x Rust Shield",
+                    text = if (isIncognito) "Mode Privasi Tanpa Riwayat" else "Gecko Engine x Brave-Grade Shield",
                     style = TextStyle(
                         color = accentColor,
                         fontSize = 11.sp,
@@ -150,64 +139,9 @@ fun ChromeNewTabPage(
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(32.dp))
 
-        // Search Pill ala Chrome Android (Background murni DarkSurfaceContainer, border ElectricOrange)
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp)
-                .clip(RoundedCornerShape(26.dp))
-                .background(DarkSurfaceContainer)
-                .border(1.5.dp, ElectricOrange, RoundedCornerShape(26.dp))
-                .padding(horizontal = 18.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Search,
-                contentDescription = "Cari",
-                tint = ElectricOrange,
-                modifier = Modifier.size(22.dp)
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Box(modifier = Modifier.weight(1f)) {
-                if (searchQuery.isEmpty()) {
-                    Text(
-                        text = "Telusuri atau ketik alamat web",
-                        style = TextStyle(
-                            color = TextSecondary,
-                            fontSize = 15.sp
-                        )
-                    )
-                }
-                BasicTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    singleLine = true,
-                    textStyle = TextStyle(
-                        color = TextPrimary,
-                        fontSize = 15.sp
-                    ),
-                    cursorBrush = SolidColor(ElectricOrange),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
-                    keyboardActions = KeyboardActions(
-                        onGo = {
-                            if (searchQuery.isNotBlank()) {
-                                val target = searchQuery
-                                searchQuery = ""
-                                focusManager.clearFocus()
-                                onNavigate(target)
-                            }
-                        }
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(28.dp))
-
-        // Grid 4x2 Speed Dial ala Chrome (Tanpa background kecampur oranye)
+        // Grid 4x2 Speed Dial ala Chrome
         Text(
             text = "Pintasan Cepat",
             style = MaterialTheme.typography.labelMedium,
@@ -266,12 +200,13 @@ fun ChromeNewTabPage(
             }
         }
 
-        // Baris 2 Panel Status: Perisai Adblock & Manajemen Kecepatan Internet (Murni DarkSurfaceVariant)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Baris 2 Panel Status: Perisai Adblock & Manajemen Kecepatan Internet
         Row(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            // Card 1: Adblock Shield
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -289,7 +224,7 @@ fun ChromeNewTabPage(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Rust Shield",
+                        text = "Stealth Shield",
                         style = TextStyle(
                             color = TextSecondary,
                             fontSize = 11.sp,
@@ -307,7 +242,7 @@ fun ChromeNewTabPage(
                     )
                 )
                 Text(
-                    text = "Pelacak Diblokir",
+                    text = "Iklan & Tracker Diblokir",
                     style = TextStyle(
                         color = TextPrimary,
                         fontSize = 11.sp
@@ -315,7 +250,6 @@ fun ChromeNewTabPage(
                 )
             }
 
-            // Card 2: Manajemen Kecepatan Jaringan
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -334,7 +268,7 @@ fun ChromeNewTabPage(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (networkStats.isTurboEnabled) "Turbo Aktif" else "Jaringan",
+                        text = if (networkStats.isTurboEnabled) "DoH Turbo Aktif" else "Jaringan",
                         style = TextStyle(
                             color = TextSecondary,
                             fontSize = 11.sp,

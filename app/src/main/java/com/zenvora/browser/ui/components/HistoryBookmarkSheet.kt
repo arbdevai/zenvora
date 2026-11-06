@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.History
@@ -62,13 +61,12 @@ fun HistoryBookmarkSheet(
     bookmarkList: List<BookmarkEntity>,
     onItemClick: (String) -> Unit,
     onClearHistory: () -> Unit,
-    onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var selectedTabIndex by remember { mutableIntStateOf(0) }
     val tabTitles = listOf("Histori (${historyList.size})", "Bookmark (${bookmarkList.size})")
 
-    // Halaman Penuh (Full-Screen History & Bookmarks Page - Zero Floating Sheet)
+    // Halaman Penuh Histori & Bookmark (Tanpa Tombol Back di Layar - Gunakan Tombol Back Sistem HP)
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -80,15 +78,8 @@ fun HistoryBookmarkSheet(
                 .fillMaxWidth()
                 .height(56.dp)
                 .background(OledBlack)
-                .padding(horizontal = 8.dp)
+                .padding(horizontal = 16.dp)
         ) {
-            IconButton(onClick = onDismissRequest) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Kembali",
-                    tint = TextPrimary
-                )
-            }
             Text(
                 text = "Histori & Bookmark",
                 style = MaterialTheme.typography.titleMedium,

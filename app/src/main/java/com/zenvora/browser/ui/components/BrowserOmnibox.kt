@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.FindInPage
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
@@ -99,6 +100,7 @@ fun BrowserOmnibox(
     onNewIncognitoTabClick: () -> Unit,
     onFindInPageClick: () -> Unit,
     onToggleDesktopMode: () -> Unit,
+    onEnterVideoFullScreen: () -> Unit,
     onSecurityClick: () -> Unit,
     onTabsClick: () -> Unit,
     onBookmarkClick: () -> Unit,
@@ -145,7 +147,7 @@ fun BrowserOmnibox(
                 )
             }
 
-            // Pill Address Bar ala Chrome (Murni DarkSurfaceContainer tanpa tint oranye)
+            // Satu-Satunya Search / Address Bar Utama
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -170,7 +172,6 @@ fun BrowserOmnibox(
                     Spacer(modifier = Modifier.width(6.dp))
                 }
 
-                // Ikon Gembok / Search ala Chrome
                 val (statusIcon, statusTint) = when {
                     currentUrl == "about:blank" -> Icons.Filled.Search to ElectricOrange
                     securityInfo.status == SecurityStatus.SECURE -> Icons.Filled.Lock to SecurityGreen
@@ -190,11 +191,10 @@ fun BrowserOmnibox(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Input URL / Kata Kunci
                 Box(modifier = Modifier.weight(1f)) {
                     if (textFieldValue.isEmpty() && !isFocused) {
                         Text(
-                            text = "Telusuri atau ketik URL",
+                            text = "Telusuri atau ketik alamat web",
                             style = TextStyle(color = TextSecondary, fontSize = 14.sp),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -232,7 +232,6 @@ fun BrowserOmnibox(
                     )
                 }
 
-                // Indikator Mode Desktop aktif di dalam kanan pill
                 if (!isFocused && isDesktopMode) {
                     Icon(
                         imageVector = Icons.Filled.DesktopWindows,
@@ -245,7 +244,6 @@ fun BrowserOmnibox(
                     Spacer(modifier = Modifier.width(6.dp))
                 }
 
-                // Badge jumlah iklan diblokir (Murni DarkSurfaceVariant + border ElectricOrange)
                 if (!isFocused && blockedCount > 0 && currentUrl != "about:blank") {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -275,7 +273,6 @@ fun BrowserOmnibox(
                     Spacer(modifier = Modifier.width(4.dp))
                 }
 
-                // Tombol Hapus saat mengetik
                 if (isFocused && textFieldValue.isNotEmpty()) {
                     IconButton(
                         onClick = { textFieldValue = "" },
@@ -341,11 +338,10 @@ fun BrowserOmnibox(
                     tonalElevation = 0.dp,
                     shadowElevation = 8.dp,
                     modifier = Modifier
-                        .width(260.dp)
+                        .width(265.dp)
                         .background(DarkSurface)
                         .border(1.dp, DarkOutline, RoundedCornerShape(12.dp))
                 ) {
-                    // Baris Action Cepat Atas ala Chrome (Maju, Bookmark, Reload, Info Keamanan)
                     Row(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically,
@@ -456,6 +452,25 @@ fun BrowserOmnibox(
                     )
 
                     DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text("Layar Penuh Video (20:9)", color = TextPrimary)
+                                Text(
+                                    text = "Mode Pas Layar Redmi 9C",
+                                    style = TextStyle(color = ElectricOrange, fontSize = 11.sp)
+                                )
+                            }
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Filled.Fullscreen, contentDescription = null, tint = ElectricOrange)
+                        },
+                        onClick = {
+                            showOverflowMenu = false
+                            onEnterVideoFullScreen()
+                        }
+                    )
+
+                    DropdownMenuItem(
                         text = { Text("Situs desktop", color = TextPrimary) },
                         leadingIcon = {
                             Icon(
@@ -513,7 +528,6 @@ fun BrowserOmnibox(
             }
         }
 
-        // Garis pemisah tipis antara Top Bar dan konten web
         HorizontalDivider(
             thickness = 1.dp,
             color = DarkOutline

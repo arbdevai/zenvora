@@ -15,7 +15,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.InstallMobile
@@ -25,7 +24,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -53,12 +51,11 @@ fun UpdateDialog(
     state: UpdateState,
     onDownload: (AppUpdateInfo) -> Unit,
     onInstall: (File) -> Unit,
-    onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     if (state is UpdateState.Idle) return
 
-    // Halaman Penuh Pembaruan Sistem Zenvora (Zero Floating Dialog)
+    // Halaman Penuh Pembaruan Sistem Zenvora (Tanpa Tombol Back di Layar - Gunakan Tombol Back Sistem HP)
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -70,15 +67,8 @@ fun UpdateDialog(
                 .fillMaxWidth()
                 .height(56.dp)
                 .background(OledBlack)
-                .padding(horizontal = 8.dp)
+                .padding(horizontal = 16.dp)
         ) {
-            IconButton(onClick = onDismissRequest) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Kembali",
-                    tint = TextPrimary
-                )
-            }
             Icon(
                 imageVector = Icons.Filled.SystemUpdate,
                 contentDescription = null,
@@ -154,17 +144,6 @@ fun UpdateDialog(
                                 fontWeight = FontWeight.Medium,
                                 color = TextPrimary
                             )
-                        }
-                        Spacer(modifier = Modifier.height(18.dp))
-                        Button(
-                            onClick = onDismissRequest,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = ElectricOrange,
-                                contentColor = OledBlack
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("Kembali ke Zenvora", fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -275,17 +254,6 @@ fun UpdateDialog(
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = SecurityRed
                             )
-                        }
-                        Spacer(modifier = Modifier.height(18.dp))
-                        Button(
-                            onClick = onDismissRequest,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = SecurityRed,
-                                contentColor = OledBlack
-                            ),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("Kembali", fontWeight = FontWeight.Bold)
                         }
                     }
 

@@ -238,6 +238,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         getActiveSession()?.reload()
     }
 
+    fun enterFullScreen() {
+        getActiveSession()?.enterFullScreen()
+    }
+
     fun exitFullScreen() {
         getActiveSession()?.exitFullScreen()
     }

@@ -17,7 +17,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.DesktopWindows
@@ -77,7 +76,6 @@ fun SettingsSheet(
     onSelectSearchEngine: (String) -> Unit,
     onClearAllData: () -> Unit,
     onCheckUpdate: () -> Unit,
-    onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val searchEngines = listOf(
@@ -87,28 +85,20 @@ fun SettingsSheet(
         "Startpage" to "https://www.startpage.com/sp/search?query="
     )
 
-    // Halaman Penuh Setelan Zenvora (Zero ModalBottomSheet, Zero Floating Popup)
+    // Halaman Penuh Setelan Zenvora (Tanpa Tombol Back di Layar - Gunakan Tombol Back Sistem HP)
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(OledBlack)
     ) {
-        // Header Bar Layar Penuh
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp)
                 .background(OledBlack)
-                .padding(horizontal = 8.dp)
+                .padding(horizontal = 16.dp)
         ) {
-            IconButton(onClick = onDismissRequest) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Kembali",
-                    tint = TextPrimary
-                )
-            }
             Text(
                 text = "Setelan Zenvora",
                 style = MaterialTheme.typography.titleMedium,
@@ -127,7 +117,6 @@ fun SettingsSheet(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
-            // 1. Bagian Manajemen Kecepatan Internet & Jaringan Maksimal
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -154,7 +143,6 @@ fun SettingsSheet(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Panel Telemetri Jaringan Real-Time (Murni DarkSurfaceVariant)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -229,7 +217,7 @@ fun SettingsSheet(
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = "Resolver DNS Cepat (Pilihan Langsung)",
+                text = "Resolver DNS-over-HTTPS (Strict DoH)",
                 style = MaterialTheme.typography.labelMedium,
                 color = TextSecondary
             )
@@ -285,9 +273,8 @@ fun SettingsSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 2. Bagian Engine & Privasi
             Text(
-                text = "Privasi & Filter Engine",
+                text = "Privasi & Perisai Iklan (Brave-Grade Shield)",
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
                 color = ElectricOrange
@@ -296,8 +283,8 @@ fun SettingsSheet(
 
             SettingSwitchRow(
                 icon = Icons.Filled.Block,
-                title = "Native Rust Ad-Blocker",
-                subtitle = "Total $totalBlockedCount tracker & iklan diblokir di tab ini",
+                title = "Stealth Ad-Blocker & Anti-Adblock Defuser",
+                subtitle = "Total $totalBlockedCount iklan, pop-under & tracker diblokir",
                 checked = isAdblockEnabled,
                 onCheckedChange = { onToggleAdblock() }
             )
@@ -314,7 +301,6 @@ fun SettingsSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // 3. Bagian Tampilan & Penjelajahan
             Text(
                 text = "Halaman & Penjelajahan",
                 style = MaterialTheme.typography.labelLarge,
@@ -366,7 +352,6 @@ fun SettingsSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // 4. Bagian Mesin Pencari (Inline Radio List - Tanpa Floating Dropdown)
             Text(
                 text = "Mesin Pencari Default",
                 style = MaterialTheme.typography.labelLarge,
@@ -419,7 +404,6 @@ fun SettingsSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 5. Bagian Pembersihan Data
             Text(
                 text = "Penyimpanan & Riwayat",
                 style = MaterialTheme.typography.labelLarge,
@@ -462,7 +446,6 @@ fun SettingsSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // 6. Bagian Informasi Sistem ("Zenvora" murni tanpa kata Browser)
             Text(
                 text = "Informasi Sistem",
                 style = MaterialTheme.typography.labelLarge,
@@ -495,7 +478,7 @@ fun SettingsSheet(
                         color = TextPrimary
                     )
                     Text(
-                        text = "GeckoView Engine x Native Rust Shield",
+                        text = "GeckoView Engine x Brave-Grade Shield",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
