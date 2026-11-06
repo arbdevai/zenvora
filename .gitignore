@@ -3,8 +3,11 @@ build/
 app/build/
 *.jks
 *.keystore
+*.part
+release.keystore
 local.properties
 .idea/
 *.iml
+scripts/
 native/**/target/
 app/src/main/jniLibs/

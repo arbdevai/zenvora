@@ -1,9 +1,9 @@
 # Project State & Session Memory
 
 ## Status Saat Ini
-- **Fase Aktif:** Fase 2: Pendelegasian Penuh ke GitHub Actions CI Runner
+- **Fase Aktif:** Fase 3: Produksi & Pemeliharaan (Seluruh Vertical Slices & CI Build Selesai)
 - **Versi Terakhir:** v1.0.0 (versionCode: 10000)
-- **Status CI Terakhir:** Workflow CI Berjalan di GitHub Actions (Run ID: 4223032...)
+- **Status CI Terakhir:** Hijau / Success (Run ID: 42233933293, Job ID: 127946543331)
 - **Remote Repo:** https://github.com/arbdevai/zenvora
 
 ## Fitur yang Selesai Tuntas (Vertical Slices)
@@ -26,8 +26,10 @@
 ## Catatan Bug Terselesaikan & Workaround (Anti-Mengulang Masalah)
 - *Catatan #01:* GeckoView membutuhkan registrasi repositori Maven Mozilla `https://maven.mozilla.org/maven2/` di `settings.gradle.kts`.
 - *Catatan #02:* Pengikatan `GeckoSession` ke `GeckoView` dalam Jetpack Compose wajib diisolasi dalam `DisposableEffect` untuk melepas session (`releaseSession()`) saat composable keluar dari komposisi.
+- *Catatan #03:* Room 2.6.1 di bawah KSP2 mengalami crash `unexpected jvm signature V` apabila fungsi `suspend` pada `@Dao` dengan `@Query("DELETE ...")` mengembalikan `Unit`. Solusi permanen: tambahkan `ksp.useKSP2=false` di `gradle.properties` dan kembalikan `: Int` pada query `DELETE`/`UPDATE`.
+- *Catatan #04:* GeckoView v136+ `NavigationDelegate.onLocationChange` membutuhkan 4 parameter (`session`, `url`, `perms`, `hasUserGesture: Boolean`), `SecurityInformation` menggunakan properti `origin`, dan konstanta pencarian halaman berada langsung di `GeckoSession.FINDER_FIND_BACKWARDS`.
+- *Catatan #05:* Folder `scripts/` diisolasi ke dalam `.gitignore` dan dihapus dari git tracking (`git rm -r --cached scripts/`) agar skrip internal chroot tidak bocor ke repositori publik.
 
 ## Tugas Aktif Selanjutnya (Next Actions)
-1. Hubungkan repository remote git pengguna (GitHub) jika sudah disiapkan.
-2. Setup GitHub Secrets untuk keystore release otomatis (`python3 scripts/setup_release_keystore.py`).
-3. Push commit ke remote branch `main` untuk memicu build APK release di GitHub Actions.
+1. Seluruh 6 Vertical Slices dan pipeline CI/CD GitHub Actions telah tuntas dan menghasilkan artefak rilis (`app-release`).
+2. Siap menerima pengembangan fitur lanjutan atau pembaruan versi berikutnya.
