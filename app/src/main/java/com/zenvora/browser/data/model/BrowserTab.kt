@@ -12,5 +12,6 @@ data class BrowserTab(
     val blockedRequestsCount: Int = 0,
     val isDesktopMode: Boolean = false,
     val isFindInPageActive: Boolean = false,
-    val findQuery: String = ""
+    val findQuery: String = "",
+    val isIncognito: Boolean = false
 )

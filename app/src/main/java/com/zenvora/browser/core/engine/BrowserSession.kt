@@ -16,13 +16,24 @@ import java.net.URI
 
 class BrowserSession(
     val tabId: String,
-    val geckoSession: GeckoSession = GeckoSession()
+    val isIncognito: Boolean = false,
+    val geckoSession: GeckoSession = createGeckoSession(isIncognito)
 ) {
+    companion object {
+        private fun createGeckoSession(isIncognito: Boolean): GeckoSession {
+            val settings = GeckoSessionSettings.Builder()
+                .usePrivateMode(isIncognito)
+                .build()
+            return GeckoSession(settings)
+        }
+    }
+
     private val _tabState = MutableStateFlow(
         BrowserTab(
             id = tabId,
             url = "about:blank",
-            title = "Tab Baru"
+            title = if (isIncognito) "Tab Samaran" else "Tab Baru",
+            isIncognito = isIncognito
         )
     )
     val tabState: StateFlow<BrowserTab> = _tabState.asStateFlow()

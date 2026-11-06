@@ -83,16 +83,17 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         return sessionsMap[_activeTabId.value]
     }
 
-    fun createNewTab(initialUrl: String = "https://duckduckgo.com") {
+    fun createNewTab(initialUrl: String = "https://duckduckgo.com", isIncognito: Boolean = false) {
         val tabId = UUID.randomUUID().toString()
-        val session = BrowserSession(tabId)
+        val session = BrowserSession(tabId, isIncognito = isIncognito)
         session.initSession(context, runtime)
         sessionsMap[tabId] = session
 
         val newTab = BrowserTab(
             id = tabId,
             url = initialUrl,
-            title = "Tab Baru"
+            title = if (isIncognito) "Tab Samaran" else "Tab Baru",
+            isIncognito = isIncognito
         )
 
         _tabs.update { it + newTab }
@@ -113,7 +114,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 }
                 if (session.tabId == _activeTabId.value) {
                     _activeTabState.value = updatedTab
-                    if (updatedTab.url.startsWith("http") && !updatedTab.isLoading && updatedTab.progress == 100) {
+                    if (updatedTab.url.startsWith("http") && !updatedTab.isLoading && updatedTab.progress == 100 && !updatedTab.isIncognito) {
                         saveHistoryEntry(updatedTab.url, updatedTab.title.ifEmpty { updatedTab.url })
                     }
                 }

@@ -33,3 +33,4 @@
 - [x] **Slice 3: Native Rust Adblock Engine** - Modul Rust NDK (`native/adblock_core`) untuk parsing dan matching URL/request network terhadap blocklist + fallback matcher.
 - [x] **Slice 4: Browser UI & Omnibox** - Bottom address bar, progress bar non-obtrusive, dialog keamanan SSL/TLS, kontrol tab multi-session, mode desktop, dan find in page.
 - [x] **Slice 5: Persistence & History Management** - Room Database (`HistoryDao`, `BookmarkDao`) untuk histori penelusuran, bookmark, dan DataStore Preferences.
+- [x] **Slice 6: Incognito Private Browsing** - Isolasi sesi GeckoView mandiri via usePrivateMode(true), anti-leaking cache/cookie disk, tab filter, dan zero history recording.

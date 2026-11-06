@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
@@ -74,6 +75,7 @@ fun BrowserOmnibox(
     blockedCount: Int,
     tabsCount: Int,
     isBookmarked: Boolean,
+    isIncognito: Boolean = false,
     onNavigate: (String) -> Unit,
     onReload: () -> Unit,
     onSecurityClick: () -> Unit,
@@ -105,6 +107,7 @@ fun BrowserOmnibox(
             modifier = Modifier.fillMaxWidth()
         ) {
             // Input Bar Container
+            val activeAccent = if (isIncognito) androidx.compose.ui.graphics.Color(0xFFBA68C8) else AccentTeal
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -112,9 +115,19 @@ fun BrowserOmnibox(
                     .height(44.dp)
                     .clip(RoundedCornerShape(22.dp))
                     .background(DarkSurfaceContainer)
-                    .border(1.dp, if (isFocused) AccentTeal else DarkOutline, RoundedCornerShape(22.dp))
+                    .border(1.dp, if (isFocused) activeAccent else DarkOutline, RoundedCornerShape(22.dp))
                     .padding(horizontal = 10.dp)
             ) {
+                if (isIncognito) {
+                    Icon(
+                        imageVector = Icons.Filled.VisibilityOff,
+                        contentDescription = "Mode Samaran",
+                        tint = activeAccent,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
+
                 // Security Icon
                 val securityIcon = when (securityInfo.status) {
                     SecurityStatus.SECURE -> Icons.Filled.Lock to SecurityGreen

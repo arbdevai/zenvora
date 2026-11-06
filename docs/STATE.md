@@ -19,6 +19,7 @@
 - [x] Settings & Privacy Screen (`SettingsSheet` & `UpdateDialog`): Pengaturan mesin pencari (DuckDuckGo, Startpage, Brave, Google), toggle adblocker, strict privacy, dan tombol cek pembaruan sistem.
 - [x] Mode Situs Desktop Dinamis (`GeckoSessionSettings.USER_AGENT_MODE_DESKTOP` / `MOBILE` toggle per-tab).
 - [x] Pencarian Teks di Halaman (`FindInPageBar` + `geckoSession.finder` dengan navigasi match sebelumnya/berikutnya).
+- [x] Mode Tab Samaran / Incognito Browsing: Isolasi sesi memori mandiri via `usePrivateMode(true)`, pencegahan penulisan cookie/cache ke disk, bypass total pencatatan histori Room DB, dan visualisasi stealth mask di Omnibox serta pemisah kategori tab di `TabOverviewSheet`.
 - [x] Pre-flight Syntax Verification (28 file Kotlin, 8 file XML, 0 hard errors)
 
 ## Catatan Bug Terselesaikan & Workaround (Anti-Mengulang Masalah)

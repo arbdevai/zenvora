@@ -133,6 +133,7 @@ fun BrowserScreen(
                 blockedCount = activeTabState.blockedRequestsCount,
                 tabsCount = tabs.size,
                 isBookmarked = isBookmarked,
+                isIncognito = activeTabState.isIncognito,
                 onNavigate = { viewModel.loadInput(it) },
                 onReload = { viewModel.reload() },
                 onSecurityClick = { showSecurityDialog = true },
@@ -165,8 +166,8 @@ fun BrowserScreen(
             onTabClosed = { tabId ->
                 viewModel.closeTab(tabId)
             },
-            onNewTab = {
-                viewModel.createNewTab()
+            onNewTab = { isIncognito ->
+                viewModel.createNewTab(isIncognito = isIncognito)
                 showTabOverview = false
             },
             onDismissRequest = { showTabOverview = false }
