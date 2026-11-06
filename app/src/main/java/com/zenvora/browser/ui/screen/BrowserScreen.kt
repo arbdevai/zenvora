@@ -59,6 +59,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.zenvora.browser.core.engine.VideoCodecMode
 import com.zenvora.browser.core.updater.UpdateState
 import com.zenvora.browser.ui.components.BrowserGeckoView
 import com.zenvora.browser.ui.components.BrowserOmnibox
@@ -110,6 +111,8 @@ fun BrowserScreen(
     val historyEntries by viewModel.historyEntries.collectAsStateWithLifecycle()
     val isAdblockEnabled by viewModel.isAdblockEnabled.collectAsStateWithLifecycle()
     val isStrictPrivacy by viewModel.isStrictPrivacy.collectAsStateWithLifecycle()
+    val isBackgroundAudioEnabled by viewModel.isBackgroundAudioEnabled.collectAsStateWithLifecycle()
+    val videoCodecModeId by viewModel.videoCodecModeId.collectAsStateWithLifecycle()
     val searchEngineUrl by viewModel.searchEngineUrl.collectAsStateWithLifecycle()
     val networkStats by viewModel.networkStats.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
@@ -263,12 +266,17 @@ fun BrowserScreen(
                                 isAdblockEnabled = isAdblockEnabled,
                                 isStrictPrivacy = isStrictPrivacy,
                                 isDesktopMode = activeTabState.isDesktopMode,
+                                isBackgroundAudioEnabled = isBackgroundAudioEnabled,
+                                videoCodecMode = VideoCodecMode.fromId(videoCodecModeId),
+                                hardwareVideoCapabilities = viewModel.hardwareVideoCapabilities,
                                 searchEngineUrl = searchEngineUrl,
                                 totalBlockedCount = totalBlockedAllTabs,
                                 networkStats = networkStats,
                                 onToggleAdblock = { viewModel.toggleAdblock() },
                                 onToggleStrictPrivacy = { viewModel.toggleStrictPrivacy() },
                                 onToggleDesktopMode = { viewModel.toggleDesktopMode() },
+                                onToggleBackgroundAudio = { viewModel.toggleBackgroundAudio() },
+                                onSelectVideoCodecMode = { viewModel.selectVideoCodecMode(it) },
                                 onToggleNetworkTurbo = { viewModel.toggleNetworkTurbo() },
                                 onSelectDnsProvider = { viewModel.selectDnsProvider(it) },
                                 onRefreshNetworkPing = { viewModel.refreshNetworkLatency() },
@@ -440,14 +448,14 @@ fun BrowserScreen(
                                     }
                                 }
 
-                                // 3. Kontrol Mode Rasio Video Layar Penuh Redmi 9C (20:9)
+                                // 3. Kontrol Mode Rasio Video Layar Penuh Redmi 9C (20:9) di Tengah Atas agar Tidak Mengganggu UI YouTube
                                 AnimatedVisibility(
                                     visible = activeTabState.isFullScreen && showVideoOverlayControls,
                                     enter = fadeIn(),
                                     exit = fadeOut(),
                                     modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(top = 14.dp, end = 18.dp)
+                                        .align(Alignment.TopCenter)
+                                        .padding(top = 12.dp)
                                 ) {
                                     Row(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp),

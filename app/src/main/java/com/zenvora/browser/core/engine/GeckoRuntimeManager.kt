@@ -34,7 +34,9 @@ object GeckoRuntimeManager {
     fun writeGeckoConfigFile(
         context: Context,
         dnsProvider: DnsProvider = DnsProvider.CLOUDFLARE,
-        isTurboEnabled: Boolean = true
+        isTurboEnabled: Boolean = true,
+        videoCodecMode: VideoCodecMode = VideoCodecMode.AUTO_HARDWARE,
+        isBackgroundAudioEnabled: Boolean = true
     ): File {
         val configFile = File(context.filesDir, CONFIG_FILE_NAME)
         val trrMode = if (dnsProvider == DnsProvider.SYSTEM) 0 else 3
@@ -50,6 +52,11 @@ object GeckoRuntimeManager {
         }
         val maxConnections = if (isTurboEnabled) 900 else 256
         val maxPerServer = if (isTurboEnabled) 12 else 6
+
+        val hwCaps = HardwareCodecDetector.detectCapabilities()
+        val enableVp9 = hwCaps.shouldEnableVp9(videoCodecMode)
+        val enableAv1 = hwCaps.shouldEnableAv1(videoCodecMode)
+        val enableWhenInBackground = isBackgroundAudioEnabled
 
         val yamlContent = """
             prefs:
@@ -76,6 +83,20 @@ object GeckoRuntimeManager {
               dom.disable_open_during_load: true
               full-screen-api.enabled: true
               full-screen-api.allow-trusted-requests-only: false
+              full-screen-api.unprefix.enabled: true
+              media.hardware-video-decoding.enabled: true
+              media.hardware-video-decoding.force-enabled: true
+              media.navigator.mediadatadecoder_vpx_enabled: $enableVp9
+              media.mediasource.vp9.enabled: $enableVp9
+              media.av1.enabled: $enableAv1
+              media.ffvpx.enabled: $enableVp9
+              media.suspend-bkgnd-video.enabled: false
+              media.UtilityProcess.enabled: true
+              dom.audiochannel.mediaControl: true
+              media.geckoview.enable-When-In-Background: $enableWhenInBackground
+              gfx.webrender.all: true
+              layers.acceleration.force-enabled: true
+              layout.frame_rate: 60
         """.trimIndent()
 
         configFile.writeText(yamlContent)
@@ -86,7 +107,9 @@ object GeckoRuntimeManager {
         val prefsFile = writeGeckoConfigFile(
             context = context,
             dnsProvider = DnsProvider.CLOUDFLARE,
-            isTurboEnabled = true
+            isTurboEnabled = true,
+            videoCodecMode = VideoCodecMode.AUTO_HARDWARE,
+            isBackgroundAudioEnabled = true
         )
 
         val settings = GeckoRuntimeSettings.Builder()

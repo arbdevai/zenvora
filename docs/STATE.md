@@ -1,9 +1,9 @@
 # Project State & Session Memory
 
 ## Status Saat Ini
-- **Fase Aktif:** Fase 6: Zero-Glitch Offset Scroll, Hardware Back Navigation, Brave-Style Procedural Shield & Redmi 9C 20:9 Video Fit (v1.5.0)
-- **Versi Terakhir:** v1.5.0 (versionCode: 10500)
-- **Status CI Terakhir:** Siap Commit & Push v1.5.0 ke GitHub Actions
+- **Fase Aktif:** Fase 7: Dynamic Hardware Codec Detector, YouTube Background Play, Universal Fullscreen Bridge & WordPress Ad Shield (v1.6.0)
+- **Versi Terakhir:** v1.6.0 (versionCode: 10600)
+- **Status CI Terakhir:** Siap Commit & Push v1.6.0 ke GitHub Actions
 - **Remote Repo:** https://github.com/arbdevai/zenvora
 
 ## Fitur yang Selesai Tuntas (Vertical Slices)
@@ -30,7 +30,12 @@
 - *Catatan #15:* **Glitch Hitam di Bawah & Search Bar Muncul-Hilang Sendiri Saat Scroll (v1.4.0 -> Fixed v1.5.0)**: Mengubah tinggi `BrowserGeckoView` via `AnimatedVisibility` di atas `SurfaceView` menyebabkan realokasi buffer permukaan C++ dan koordinat sentuh lokal bergeser `57.dp` setiap kali bar bersembunyi (memicu loop osilasi `onScrollUp`). Solusi permanen: jaga tinggi `BrowserGeckoView` tetap 100% konstan (`Modifier.fillMaxSize()`), pasang `pointerInput` pada `Box` induk statis dengan debounce `420ms`, dan geser `BrowserOmnibox` serta `BrowserGeckoView` menggunakan `Modifier.offset { IntOffset(0, ...) }`.
 - *Catatan #16:* **Search Bar Ganda & Tombol Kembali di Layar (v1.4.0 -> Fixed v1.5.0)**: Hapus search bar tengah pada `ChromeNewTabPage` (cukup gunakan `BrowserOmnibox` utama di atas) dan hapus seluruh ikon `ArrowBack` / tombol `"Kembali"` di semua halaman (`TabOverviewSheet`, `HistoryBookmarkSheet`, `SettingsSheet`, `SecurityDetailDialog`, `UpdateDialog`) karena navigasi kembali ditangani penuh oleh tombol kembali bawaan HP (`BackHandler`).
 - *Catatan #17:* **Adblock Masih Bocor di Situs Streaming & Video Fullscreen Redmi 9C (v1.4.0 -> Fixed v1.5.0)**: Perkuat `zenvora_shield` dengan arsitektur Brave Shields (100+ ad/pop-under network, heuristic keyword judi/slot, blokir TLD pihak ketiga mencurigakan, blokir `window.open` & click-hijacking di `document_start`, pembersihan overlay transparan `z-index` tinggi di atas video) serta tambahkan kontrol rasio layar penuh video khusus layar 20:9 Redmi 9C (`Pas Layar 20:9`, `Zoom Penuh`, `Rasio 16:9`) dan pemicu langsung `"Layar Penuh Video (20:9)"` di menu 3-titik.
+- *Catatan #18:* **Video 720p+ Patah-Patah di Chipset Entry-Level, YouTube Mati di Latar Belakang, Fullscreen Player Custom Tidak Membesar & Posisi Kontrol Rasio Mengganggu UI YouTube (v1.5.0 -> Fixed v1.6.0)**:
+  1. Pindahkan kontrol rasio video fullscreen dari `Alignment.TopEnd` ke `Alignment.TopCenter` agar tidak menutupi tombol pengaturan/kualitas YouTube di kanan atas.
+  2. Buat `HardwareCodecDetector` berbasis `MediaCodecList(MediaCodecList.ALL_CODECS)` yang mendeteksi dekoder hardware fisik (`H.264`, `HEVC`, `VP9`, `AV1`) secara dinamis sesuai chipset HP (tanpa hardcode) + opsi `VideoCodecMode` di Setelan, serta jeda scanner DOM saat video sedang fullscreen.
+  3. Aktifkan pemutaran latar belakang YouTube/streaming dengan men-spoof `document.visibilityState = 'visible'`, `document.hidden = false`, memblokir event `visibilitychange`, dan menjaga sesi aktif (`media.geckoview.enable-When-In-Background: true` + `keepBackgroundMediaAlive`).
+  4. Pasang Universal Fullscreen Video Engine Bridge di `content_shield.js` (`requestFullscreen` patcher + pendeteksi klik tombol fullscreen custom) dan filter banner GIF/plugin iklan WordPress (`ad-inserter`, `wp-quads`, `.gif` eksternal).
 
 ## Tugas Aktif Selanjutnya (Next Actions)
 1. Verifikasi sintaksis `python3 /home/coder/.gemini/config/skills/android-compose-builder/scripts/verify_kotlin_syntax.py .` (0 hard errors).
-2. Commit dan push rilis `v1.5.0` ke `origin main` serta pantau workflow GitHub Actions hingga selesai.
+2. Commit dan push rilis `v1.6.0` ke `origin main` serta pantau workflow GitHub Actions hingga selesai.

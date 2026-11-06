@@ -7,6 +7,9 @@ import com.zenvora.browser.core.download.BrowserDownloadManager
 import com.zenvora.browser.core.download.DownloadItem
 import com.zenvora.browser.core.engine.BrowserSession
 import com.zenvora.browser.core.engine.GeckoRuntimeManager
+import com.zenvora.browser.core.engine.HardwareCodecDetector
+import com.zenvora.browser.core.engine.HardwareVideoCapabilities
+import com.zenvora.browser.core.engine.VideoCodecMode
 import com.zenvora.browser.core.network.DnsProvider
 import com.zenvora.browser.core.network.NetworkSpeedManager
 import com.zenvora.browser.core.network.NetworkStats
@@ -62,6 +65,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val dnsProviderId: StateFlow<String> = preferencesRepository.dnsProviderId
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "cloudflare")
 
+    val videoCodecModeId: StateFlow<String> = preferencesRepository.videoCodecModeId
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "auto_hardware")
+
+    val isBackgroundAudioEnabled: StateFlow<Boolean> = preferencesRepository.isBackgroundAudioEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val hardwareVideoCapabilities: HardwareVideoCapabilities = HardwareCodecDetector.detectCapabilities()
+
     val historyEntries: StateFlow<List<HistoryEntity>> = database.historyDao().getAllHistory()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -93,14 +104,54 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             preferencesRepository.isNetworkTurboEnabled.collect { enabled ->
                 networkSpeedManager.setTurboEnabled(enabled)
                 val provider = DnsProvider.fromId(dnsProviderId.value)
-                GeckoRuntimeManager.writeGeckoConfigFile(context, provider, enabled)
+                val codecMode = VideoCodecMode.fromId(videoCodecModeId.value)
+                GeckoRuntimeManager.writeGeckoConfigFile(
+                    context = context,
+                    dnsProvider = provider,
+                    isTurboEnabled = enabled,
+                    videoCodecMode = codecMode,
+                    isBackgroundAudioEnabled = isBackgroundAudioEnabled.value
+                )
             }
         }
         viewModelScope.launch {
             preferencesRepository.dnsProviderId.collect { id ->
                 val provider = DnsProvider.fromId(id)
+                val codecMode = VideoCodecMode.fromId(videoCodecModeId.value)
                 networkSpeedManager.setDnsProvider(provider)
-                GeckoRuntimeManager.writeGeckoConfigFile(context, provider, isNetworkTurboEnabled.value)
+                GeckoRuntimeManager.writeGeckoConfigFile(
+                    context = context,
+                    dnsProvider = provider,
+                    isTurboEnabled = isNetworkTurboEnabled.value,
+                    videoCodecMode = codecMode,
+                    isBackgroundAudioEnabled = isBackgroundAudioEnabled.value
+                )
+            }
+        }
+        viewModelScope.launch {
+            preferencesRepository.videoCodecModeId.collect { id ->
+                val codecMode = VideoCodecMode.fromId(id)
+                val provider = DnsProvider.fromId(dnsProviderId.value)
+                GeckoRuntimeManager.writeGeckoConfigFile(
+                    context = context,
+                    dnsProvider = provider,
+                    isTurboEnabled = isNetworkTurboEnabled.value,
+                    videoCodecMode = codecMode,
+                    isBackgroundAudioEnabled = isBackgroundAudioEnabled.value
+                )
+            }
+        }
+        viewModelScope.launch {
+            preferencesRepository.isBackgroundAudioEnabled.collect { enabled ->
+                val provider = DnsProvider.fromId(dnsProviderId.value)
+                val codecMode = VideoCodecMode.fromId(videoCodecModeId.value)
+                GeckoRuntimeManager.writeGeckoConfigFile(
+                    context = context,
+                    dnsProvider = provider,
+                    isTurboEnabled = isNetworkTurboEnabled.value,
+                    videoCodecMode = codecMode,
+                    isBackgroundAudioEnabled = enabled
+                )
             }
         }
         createNewTab("about:blank")
@@ -293,7 +344,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             preferencesRepository.setNetworkTurboEnabled(next)
             networkSpeedManager.setTurboEnabled(next)
             val provider = DnsProvider.fromId(dnsProviderId.value)
-            GeckoRuntimeManager.writeGeckoConfigFile(context, provider, next)
+            val codecMode = VideoCodecMode.fromId(videoCodecModeId.value)
+            GeckoRuntimeManager.writeGeckoConfigFile(
+                context = context,
+                dnsProvider = provider,
+                isTurboEnabled = next,
+                videoCodecMode = codecMode,
+                isBackgroundAudioEnabled = isBackgroundAudioEnabled.value
+            )
             if (next) {
                 networkSpeedManager.warmupAndMeasureLatency(_activeTabState.value.url)
             }
@@ -304,8 +362,51 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             preferencesRepository.setDnsProviderId(provider.id)
             networkSpeedManager.setDnsProvider(provider)
-            GeckoRuntimeManager.writeGeckoConfigFile(context, provider, isNetworkTurboEnabled.value)
+            val codecMode = VideoCodecMode.fromId(videoCodecModeId.value)
+            GeckoRuntimeManager.writeGeckoConfigFile(
+                context = context,
+                dnsProvider = provider,
+                isTurboEnabled = isNetworkTurboEnabled.value,
+                videoCodecMode = codecMode,
+                isBackgroundAudioEnabled = isBackgroundAudioEnabled.value
+            )
             networkSpeedManager.warmupAndMeasureLatency(_activeTabState.value.url)
+        }
+    }
+
+    fun selectVideoCodecMode(mode: VideoCodecMode) {
+        viewModelScope.launch {
+            preferencesRepository.setVideoCodecModeId(mode.id)
+            val provider = DnsProvider.fromId(dnsProviderId.value)
+            GeckoRuntimeManager.writeGeckoConfigFile(
+                context = context,
+                dnsProvider = provider,
+                isTurboEnabled = isNetworkTurboEnabled.value,
+                videoCodecMode = mode,
+                isBackgroundAudioEnabled = isBackgroundAudioEnabled.value
+            )
+        }
+    }
+
+    fun toggleBackgroundAudio() {
+        viewModelScope.launch {
+            val next = !isBackgroundAudioEnabled.value
+            preferencesRepository.setBackgroundAudioEnabled(next)
+            val provider = DnsProvider.fromId(dnsProviderId.value)
+            val codecMode = VideoCodecMode.fromId(videoCodecModeId.value)
+            GeckoRuntimeManager.writeGeckoConfigFile(
+                context = context,
+                dnsProvider = provider,
+                isTurboEnabled = isNetworkTurboEnabled.value,
+                videoCodecMode = codecMode,
+                isBackgroundAudioEnabled = next
+            )
+        }
+    }
+
+    fun onAppBackgrounded() {
+        if (isBackgroundAudioEnabled.value) {
+            getActiveSession()?.keepBackgroundMediaAlive(true)
         }
     }
 

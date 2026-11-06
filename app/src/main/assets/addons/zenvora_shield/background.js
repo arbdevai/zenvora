@@ -1,6 +1,6 @@
 "use strict";
 
-// Daftar komprehensif jaringan iklan global, regional, pop-under, dan iklan situs streaming (Gaya Brave Shields)
+// Daftar komprehensif jaringan iklan global, regional, pop-under, WordPress ad-rotator, dan iklan situs streaming (Gaya Brave Shields)
 const BLOCKED_DOMAINS = [
   "doubleclick.net",
   "googlesyndication.com",
@@ -36,6 +36,8 @@ const BLOCKED_DOMAINS = [
   "adsterratech.com",
   "highperformanceformat.com",
   "profitabledisplaynetwork.com",
+  "effectivegatecpm.com",
+  "topcreativeformat.com",
   "exoclick.com",
   "exosrv.com",
   "realsrv.com",
@@ -108,19 +110,34 @@ const BLOCKED_DOMAINS = [
   "primis.tech",
   "aniview.com",
   "brid.tv",
-  "jwpltx.com"
+  "jwpltx.com",
+  "onclasrv.com",
+  "onclkds.com",
+  "acscdn.com",
+  "tsyndicate.com",
+  "twinrdsrv.com",
+  "magsrv.com",
+  "wp.com/ads"
 ];
 
-// Kata kunci heuristik untuk memblokir iklan slot/judi/banner/pop-under pihak ketiga di situs streaming Indonesia
-const THIRD_PARTY_AD_KEYWORDS = [
+// Kata kunci heuristik untuk memblokir iklan slot/judi/banner/WordPress ad plugin/pop-under di situs streaming & berita
+const AD_URL_KEYWORDS = [
   "/pagead/",
   "/adserver",
   "/adframe",
   "/adbanner",
   "/ads/",
   "/adv/",
-  "/banner/",
-  "/banners/",
+  "/banner-iklan",
+  "/iklan-",
+  "/iklan/",
+  "/pasang-iklan",
+  "/wp-content/plugins/ad-inserter",
+  "/wp-content/plugins/advanced-ads",
+  "/wp-content/plugins/wp-quads",
+  "/wp-content/plugins/quick-adsense",
+  "/wp-content/uploads/iklan",
+  "/wp-content/uploads/banner",
   "/popunder",
   "/pop_under",
   "/pop.js",
@@ -130,6 +147,7 @@ const THIRD_PARTY_AD_KEYWORDS = [
   "slotgacor",
   "slot-gacor",
   "slot88",
+  "slot77",
   "maxwin",
   "togel",
   "sbobet",
@@ -143,7 +161,12 @@ const THIRD_PARTY_AD_KEYWORDS = [
   "cuan88",
   "gacor88",
   "bola88",
-  "poker88"
+  "poker88",
+  "mahjongways",
+  "kakekzeus",
+  "situsgacor",
+  "rtp-slot",
+  "rtpslot"
 ];
 
 // TLD yang sangat sering dipakai oleh jaringan iklan pop-under rotasi otomatis
@@ -155,7 +178,12 @@ const SUSPICIOUS_THIRD_PARTY_TLDS = [
   ".loan",
   ".men",
   ".date",
-  ".click"
+  ".click",
+  ".rest",
+  ".hair",
+  ".skin",
+  ".autos",
+  ".boats"
 ];
 
 // Pola URL script anti-adblock / bait yang dinetralkan dengan stub 200 OK
@@ -168,7 +196,8 @@ const BAIT_SCRIPT_PATTERNS = [
   "adblockdetector",
   "ads-beacon.js",
   "prebid",
-  "admiral"
+  "admiral",
+  "deblocker"
 ];
 
 const NEUTERED_AD_SCRIPT_DATA_URL =
@@ -217,8 +246,30 @@ function isBaitScript(url) {
 
 function hasAdKeyword(url) {
   const lower = url.toLowerCase();
-  for (let i = 0; i < THIRD_PARTY_AD_KEYWORDS.length; i++) {
-    if (lower.indexOf(THIRD_PARTY_AD_KEYWORDS[i]) !== -1) {
+  for (let i = 0; i < AD_URL_KEYWORDS.length; i++) {
+    if (lower.indexOf(AD_URL_KEYWORDS[i]) !== -1) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isThirdPartyAnimatedGifBanner(url, details, isThirdParty) {
+  if (details.type !== "image" && details.type !== "imageset") return false;
+  const lower = url.toLowerCase();
+  // Banyak situs WordPress streaming menghost gambar banner .gif judi/slot di CDN image eksternal atau folder uploads
+  if (lower.endsWith(".gif") || lower.includes(".gif?")) {
+    if (
+      isThirdParty ||
+      lower.includes("banner") ||
+      lower.includes("iklan") ||
+      lower.includes("slot") ||
+      lower.includes("gacor") ||
+      lower.includes("728x90") ||
+      lower.includes("468x60") ||
+      lower.includes("300x250") ||
+      lower.includes("970x90")
+    ) {
       return true;
     }
   }
@@ -260,19 +311,20 @@ browser.webRequest.onBeforeRequest.addListener(
 
     const isThirdParty = docHost && getRootDomain(reqHost) !== getRootDomain(docHost);
 
-    // 2. Blokir navigasi main_frame hanya jika mengarah ke domain iklan / pop-under
+    // 2. Blokir navigasi main_frame hanya jika mengarah ke domain iklan / pop-under / kata kunci judi
     if (details.type === "main_frame") {
-      if (isDomainBlocked(reqHost)) {
+      if (isDomainBlocked(reqHost) || hasSuspiciousTld(reqHost)) {
         return { cancel: true };
       }
       return {};
     }
 
-    // 3. Blokir sub-resource dari domain iklan, kata kunci iklan/judi, atau script/iframe pihak ketiga dari TLD mencurigakan
+    // 3. Blokir sub-resource dari domain iklan, kata kunci iklan/judi, banner GIF WordPress, atau script/iframe pihak ketiga dari TLD mencurigakan
     if (
       isDomainBlocked(reqHost) ||
       hasAdKeyword(url) ||
-      (isThirdParty && hasSuspiciousTld(reqHost) && (details.type === "script" || details.type === "sub_frame" || details.type === "xmlhttprequest"))
+      isThirdPartyAnimatedGifBanner(url, details, isThirdParty) ||
+      (isThirdParty && hasSuspiciousTld(reqHost) && (details.type === "script" || details.type === "sub_frame" || details.type === "xmlhttprequest" || details.type === "image"))
     ) {
       if (details.type === "script") {
         return { redirectUrl: NEUTERED_AD_SCRIPT_DATA_URL };

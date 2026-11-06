@@ -20,6 +20,8 @@ class PreferencesRepository(private val context: Context) {
         val STRICT_PRIVACY = booleanPreferencesKey("strict_privacy")
         val NETWORK_TURBO = booleanPreferencesKey("network_turbo")
         val DNS_PROVIDER_ID = stringPreferencesKey("dns_provider_id")
+        val VIDEO_CODEC_MODE_ID = stringPreferencesKey("video_codec_mode_id")
+        val BACKGROUND_AUDIO_ENABLED = booleanPreferencesKey("background_audio_enabled")
     }
 
     val isAdblockEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -40,6 +42,14 @@ class PreferencesRepository(private val context: Context) {
 
     val dnsProviderId: Flow<String> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.DNS_PROVIDER_ID] ?: "cloudflare"
+    }
+
+    val videoCodecModeId: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.VIDEO_CODEC_MODE_ID] ?: "auto_hardware"
+    }
+
+    val isBackgroundAudioEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.BACKGROUND_AUDIO_ENABLED] ?: true
     }
 
     suspend fun setAdblockEnabled(enabled: Boolean) {
@@ -69,6 +79,18 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setDnsProviderId(id: String) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.DNS_PROVIDER_ID] = id
+        }
+    }
+
+    suspend fun setVideoCodecModeId(id: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.VIDEO_CODEC_MODE_ID] = id
+        }
+    }
+
+    suspend fun setBackgroundAudioEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.BACKGROUND_AUDIO_ENABLED] = enabled
         }
     }
 }

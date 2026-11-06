@@ -21,4 +21,14 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onPause() {
+        super.onPause()
+        browserViewModel.onAppBackgrounded()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        browserViewModel.onAppBackgrounded()
+    }
 }

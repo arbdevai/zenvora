@@ -22,6 +22,8 @@ import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.FindInPage
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
@@ -47,6 +49,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zenvora.browser.BuildConfig
+import com.zenvora.browser.core.engine.HardwareVideoCapabilities
+import com.zenvora.browser.core.engine.VideoCodecMode
 import com.zenvora.browser.core.network.DnsProvider
 import com.zenvora.browser.core.network.NetworkStats
 import com.zenvora.browser.ui.theme.DarkOutline
@@ -63,12 +67,17 @@ fun SettingsSheet(
     isAdblockEnabled: Boolean,
     isStrictPrivacy: Boolean,
     isDesktopMode: Boolean,
+    isBackgroundAudioEnabled: Boolean,
+    videoCodecMode: VideoCodecMode,
+    hardwareVideoCapabilities: HardwareVideoCapabilities,
     searchEngineUrl: String,
     totalBlockedCount: Int,
     networkStats: NetworkStats,
     onToggleAdblock: () -> Unit,
     onToggleStrictPrivacy: () -> Unit,
     onToggleDesktopMode: () -> Unit,
+    onToggleBackgroundAudio: () -> Unit,
+    onSelectVideoCodecMode: (VideoCodecMode) -> Unit,
     onToggleNetworkTurbo: () -> Unit,
     onSelectDnsProvider: (DnsProvider) -> Unit,
     onRefreshNetworkPing: () -> Unit,
@@ -300,6 +309,102 @@ fun SettingsSheet(
             )
 
             Spacer(modifier = Modifier.height(20.dp))
+
+            Text(
+                text = "Akselerasi Video Hardware & Pemutaran Latar Belakang",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = ElectricOrange
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+
+            SettingSwitchRow(
+                icon = Icons.Filled.Headphones,
+                title = "Putar Video & Musik di Latar Belakang (YouTube Non-Stop)",
+                subtitle = "Tetap putar audio/video saat berpindah aplikasi atau layar HP dimatikan",
+                checked = isBackgroundAudioEnabled,
+                onCheckedChange = { onToggleBackgroundAudio() }
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(DarkSurfaceVariant)
+                    .border(1.dp, DarkOutline, RoundedCornerShape(10.dp))
+                    .padding(12.dp)
+            ) {
+                Text(
+                    text = "Dekoder Hardware Chipset Terdeteksi: ${hardwareVideoCapabilities.decoderNamesSummary}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = ElectricOrange
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = if (!hardwareVideoCapabilities.hasHardwareVp9 && !hardwareVideoCapabilities.hasHardwareAv1) {
+                        "Chipset ini mengandalkan H.264 Hardware. Mode Otomatis menonaktifkan VP9/AV1 software agar video 720p/1080p tidak patah-patah."
+                    } else {
+                        "Chipset ini mendukung dekoder hardware modern (${hardwareVideoCapabilities.decoderNamesSummary}) untuk pemutaran resolusi tinggi."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            VideoCodecMode.entries.forEach { mode ->
+                val isSelected = videoCodecMode == mode
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(DarkSurfaceContainer)
+                        .border(
+                            width = if (isSelected) 1.5.dp else 1.dp,
+                            color = if (isSelected) ElectricOrange else DarkOutline,
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        .clickable { onSelectVideoCodecMode(mode) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Memory,
+                        contentDescription = null,
+                        tint = if (isSelected) ElectricOrange else TextSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = mode.displayName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = mode.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    }
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = { onSelectVideoCodecMode(mode) },
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = ElectricOrange,
+                            unselectedColor = TextSecondary
+                        )
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text(
                 text = "Halaman & Penjelajahan",

@@ -58,7 +58,14 @@ class BrowserSession(
         if (!isOpen) {
             setupDelegates()
             geckoSession.open(runtime)
+            geckoSession.setActive(true)
             isOpen = true
+        }
+    }
+
+    fun keepBackgroundMediaAlive(enabled: Boolean) {
+        if (isOpen && enabled) {
+            geckoSession.setActive(true)
         }
     }
 
