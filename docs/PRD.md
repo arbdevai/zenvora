@@ -28,8 +28,8 @@
 - Scaffolding wajib: `Scaffold` + `contentWindowInsets` + `.padding(innerPadding)` + `.imePadding()`.
 
 ## 5. Daftar Fitur Utama (Vertical Slices)
-- [ ] **Slice 1: Scaffolding & CI/CD** - Struktur proyek Compose, toolchain verifikasi, in-app updater, dan GitHub Actions runner.
-- [ ] **Slice 2: GeckoView Compose Bridge** - `GeckoRuntime` singleton, `GeckoSession` controller, dan rendering `AndroidView` di Compose dengan gesture & lifecycle terhubung penuh.
-- [ ] **Slice 3: Native Rust Adblock Engine** - Modul Rust NDK untuk parsing dan matching URL/request network terhadap blocklist (EasyList / Peter Lowe).
-- [ ] **Slice 4: Browser UI & Omnibox** - Bottom address bar, progress bar non-obtrusive, dialog keamanan SSL/TLS, kontrol tab multi-session.
-- [ ] **Slice 5: Persistence & History Management** - Room Database untuk histori penelusuran, bookmark, dan auto-restore session saat aplikasi dibuka kembali.
+- [x] **Slice 1: Scaffolding & CI/CD** - Struktur proyek Compose, toolchain verifikasi, in-app updater (.part streaming & isApkValid), dan GitHub Actions runner.
+- [x] **Slice 2: GeckoView Compose Bridge** - `GeckoRuntimeManager` singleton, `BrowserSession` controller, dan rendering `AndroidView` di Compose dengan gesture & lifecycle terhubung penuh.
+- [x] **Slice 3: Native Rust Adblock Engine** - Modul Rust NDK (`native/adblock_core`) untuk parsing dan matching URL/request network terhadap blocklist + fallback matcher.
+- [x] **Slice 4: Browser UI & Omnibox** - Bottom address bar, progress bar non-obtrusive, dialog keamanan SSL/TLS, kontrol tab multi-session, mode desktop, dan find in page.
+- [x] **Slice 5: Persistence & History Management** - Room Database (`HistoryDao`, `BookmarkDao`) untuk histori penelusuran, bookmark, dan DataStore Preferences.
