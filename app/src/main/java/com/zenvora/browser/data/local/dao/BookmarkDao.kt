@@ -19,5 +19,5 @@ interface BookmarkDao {
     suspend fun insertBookmark(bookmark: BookmarkEntity): Long
 
     @Query("DELETE FROM bookmarks WHERE url = :url")
-    suspend fun deleteBookmarkByUrl(url: String)
+    suspend fun deleteBookmarkByUrl(url: String): Int
 }
