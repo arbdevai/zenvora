@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -30,7 +29,9 @@ import com.zenvora.browser.ui.components.BrowserGeckoView
 import com.zenvora.browser.ui.components.BrowserOmnibox
 import com.zenvora.browser.ui.components.HistoryBookmarkSheet
 import com.zenvora.browser.ui.components.SecurityDetailDialog
+import com.zenvora.browser.ui.components.SettingsSheet
 import com.zenvora.browser.ui.components.TabOverviewSheet
+import com.zenvora.browser.ui.components.UpdateDialog
 import com.zenvora.browser.ui.theme.AccentTeal
 import com.zenvora.browser.ui.theme.OledBlack
 import com.zenvora.browser.ui.viewmodel.BrowserViewModel
@@ -46,10 +47,15 @@ fun BrowserScreen(
     val securityInfo by viewModel.securityInfo.collectAsStateWithLifecycle()
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
     val historyEntries by viewModel.historyEntries.collectAsStateWithLifecycle()
+    val isAdblockEnabled by viewModel.isAdblockEnabled.collectAsStateWithLifecycle()
+    val isStrictPrivacy by viewModel.isStrictPrivacy.collectAsStateWithLifecycle()
+    val searchEngineUrl by viewModel.searchEngineUrl.collectAsStateWithLifecycle()
+    val updateState by viewModel.updateState.collectAsStateWithLifecycle()
 
     var showTabOverview by remember { mutableStateOf(false) }
     var showSecurityDialog by remember { mutableStateOf(false) }
     var showHistorySheet by remember { mutableStateOf(false) }
+    var showSettingsSheet by remember { mutableStateOf(false) }
 
     val isBookmarked = remember(bookmarks, activeTabState.url) {
         bookmarks.any { it.url == activeTabState.url }
@@ -61,6 +67,7 @@ fun BrowserScreen(
             showSecurityDialog -> showSecurityDialog = false
             showTabOverview -> showTabOverview = false
             showHistorySheet -> showHistorySheet = false
+            showSettingsSheet -> showSettingsSheet = false
             activeTabState.canGoBack -> viewModel.goBack()
         }
     }
@@ -121,7 +128,8 @@ fun BrowserScreen(
                 onBookmarkClick = {
                     viewModel.toggleBookmark(activeTabState.url, activeTabState.title)
                 },
-                onHistoryClick = { showHistorySheet = true }
+                onHistoryClick = { showHistorySheet = true },
+                onSettingsClick = { showSettingsSheet = true }
             )
         }
     }
@@ -165,4 +173,33 @@ fun BrowserScreen(
             onDismissRequest = { showHistorySheet = false }
         )
     }
+
+    if (showSettingsSheet) {
+        SettingsSheet(
+            isAdblockEnabled = isAdblockEnabled,
+            isStrictPrivacy = isStrictPrivacy,
+            searchEngineUrl = searchEngineUrl,
+            totalBlockedCount = activeTabState.blockedRequestsCount,
+            onToggleAdblock = { viewModel.toggleAdblock() },
+            onToggleStrictPrivacy = { viewModel.toggleStrictPrivacy() },
+            onSelectSearchEngine = { viewModel.setSearchEngine(it) },
+            onClearAllData = {
+                viewModel.clearAllBrowsingData()
+                showSettingsSheet = false
+            },
+            onCheckUpdate = {
+                showSettingsSheet = false
+                viewModel.checkForUpdates()
+            },
+            onDismissRequest = { showSettingsSheet = false }
+        )
+    }
+
+    // Dialog Update APK Mandiri
+    UpdateDialog(
+        state = updateState,
+        onDownload = { info -> viewModel.downloadUpdate(info) },
+        onInstall = { apkFile -> viewModel.triggerInstall(apkFile) },
+        onDismissRequest = { viewModel.dismissUpdate() }
+    )
 }

@@ -14,7 +14,10 @@
 - [x] Native Rust Adblock Engine (`native/adblock_core/`) + JNI bridge `AdblockEngine` + Fallback Matcher
 - [x] Persistensi Room Database (`HistoryDao`, `BookmarkDao`, `ZenvoraDatabase`) & Jetpack DataStore Preferences
 - [x] Antarmuka Jetpack Compose: `BrowserScreen` (Scaffold + safeDrawing + imePadding), `BrowserOmnibox` (Bottom bar, SSL badge, shield counter, tabs badge), `BrowserGeckoView`, `TabOverviewSheet`, `SecurityDetailDialog`, `HistoryBookmarkSheet`
-- [x] Pre-flight Syntax Verification (23 file Kotlin, 8 file XML, 0 hard errors)
+- [x] In-App Updater System (`UpdateManager`): Streaming OkHttp chunk 64KB, isolasi `.part`, verifikasi 4-lapis `isApkValid`, dan pemicuan instalasi mandiri via `FileProvider`.
+- [x] Background Browser Download Manager (`BrowserDownloadManager`): Unduhan file langsung terisolasi dengan pelacakan progres.
+- [x] Settings & Privacy Screen (`SettingsSheet` & `UpdateDialog`): Pengaturan mesin pencari (DuckDuckGo, Startpage, Brave, Google), toggle adblocker, strict privacy, dan tombol cek pembaruan sistem.
+- [x] Pre-flight Syntax Verification (27 file Kotlin, 8 file XML, 0 hard errors)
 
 ## Catatan Bug Terselesaikan & Workaround (Anti-Mengulang Masalah)
 - *Catatan #01:* GeckoView membutuhkan registrasi repositori Maven Mozilla `https://maven.mozilla.org/maven2/` di `settings.gradle.kts`.

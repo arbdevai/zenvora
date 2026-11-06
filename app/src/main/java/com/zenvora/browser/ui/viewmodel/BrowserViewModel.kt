@@ -3,8 +3,13 @@ package com.zenvora.browser.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.zenvora.browser.core.download.BrowserDownloadManager
+import com.zenvora.browser.core.download.DownloadItem
 import com.zenvora.browser.core.engine.BrowserSession
 import com.zenvora.browser.core.engine.GeckoRuntimeManager
+import com.zenvora.browser.core.updater.AppUpdateInfo
+import com.zenvora.browser.core.updater.UpdateManager
+import com.zenvora.browser.core.updater.UpdateState
 import com.zenvora.browser.data.local.PreferencesRepository
 import com.zenvora.browser.data.local.ZenvoraDatabase
 import com.zenvora.browser.data.local.entity.BookmarkEntity
@@ -18,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.UUID
@@ -29,7 +35,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val database = ZenvoraDatabase.getInstance(context)
     private val preferencesRepository = PreferencesRepository(context)
 
+    val updateManager = UpdateManager(context)
+    val updateState: StateFlow<UpdateState> = updateManager.updateState
+
+    val downloadManager = BrowserDownloadManager(context)
+    val downloads: StateFlow<List<DownloadItem>> = downloadManager.downloads
+
     val isAdblockEnabled: StateFlow<Boolean> = preferencesRepository.isAdblockEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val isStrictPrivacy: StateFlow<Boolean> = preferencesRepository.isStrictPrivacy
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     val searchEngineUrl: StateFlow<String> = preferencesRepository.searchEngineUrl
@@ -178,6 +193,19 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun toggleStrictPrivacy() {
+        viewModelScope.launch {
+            val current = isStrictPrivacy.value
+            preferencesRepository.setStrictPrivacy(!current)
+        }
+    }
+
+    fun setSearchEngine(url: String) {
+        viewModelScope.launch {
+            preferencesRepository.setSearchEngineUrl(url)
+        }
+    }
+
     fun toggleBookmark(url: String, title: String) {
         viewModelScope.launch {
             val isBookmarked = database.bookmarkDao().isBookmarked(url)
@@ -209,6 +237,33 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             database.historyDao().clearAllHistory()
         }
+    }
+
+    fun clearAllBrowsingData() {
+        viewModelScope.launch {
+            database.historyDao().clearAllHistory()
+            getActiveSession()?.loadUri("about:blank")
+        }
+    }
+
+    fun checkForUpdates(releasesApiUrl: String = "https://api.github.com/repos/zenvora/zenvora-browser/releases/latest") {
+        viewModelScope.launch {
+            updateManager.checkForUpdates(releasesApiUrl)
+        }
+    }
+
+    fun downloadUpdate(info: AppUpdateInfo) {
+        viewModelScope.launch {
+            updateManager.downloadUpdate(info)
+        }
+    }
+
+    fun triggerInstall(apkFile: File) {
+        updateManager.triggerInstall(apkFile)
+    }
+
+    fun dismissUpdate() {
+        updateManager.dismiss()
     }
 
     override fun onCleared() {

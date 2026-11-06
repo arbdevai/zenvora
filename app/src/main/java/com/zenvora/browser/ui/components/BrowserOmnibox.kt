@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Badge
@@ -79,6 +80,7 @@ fun BrowserOmnibox(
     onTabsClick: () -> Unit,
     onBookmarkClick: () -> Unit,
     onHistoryClick: () -> Unit,
+    onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var textFieldValue by remember { mutableStateOf(currentUrl) }
@@ -274,6 +276,19 @@ fun BrowserOmnibox(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
+                )
+            }
+
+            // Settings Button
+            IconButton(
+                onClick = onSettingsClick,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Settings,
+                    contentDescription = "Pengaturan",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
