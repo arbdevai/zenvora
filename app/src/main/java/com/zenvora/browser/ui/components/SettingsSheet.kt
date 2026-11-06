@@ -1,11 +1,13 @@
 package com.zenvora.browser.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -15,42 +17,48 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.DesktopWindows
-import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.FindInPage
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.zenvora.browser.BuildConfig
-import com.zenvora.browser.ui.theme.AccentTeal
+import com.zenvora.browser.core.network.DnsProvider
+import com.zenvora.browser.core.network.NetworkStats
+import com.zenvora.browser.ui.theme.DarkOutline
 import com.zenvora.browser.ui.theme.DarkSurfaceContainer
+import com.zenvora.browser.ui.theme.DarkSurfaceVariant
+import com.zenvora.browser.ui.theme.ElectricOrange
+import com.zenvora.browser.ui.theme.OledBlack
+import com.zenvora.browser.ui.theme.SecurityRed
+import com.zenvora.browser.ui.theme.TextPrimary
+import com.zenvora.browser.ui.theme.TextSecondary
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsSheet(
     isAdblockEnabled: Boolean,
@@ -58,59 +66,238 @@ fun SettingsSheet(
     isDesktopMode: Boolean,
     searchEngineUrl: String,
     totalBlockedCount: Int,
+    networkStats: NetworkStats,
     onToggleAdblock: () -> Unit,
     onToggleStrictPrivacy: () -> Unit,
     onToggleDesktopMode: () -> Unit,
+    onToggleNetworkTurbo: () -> Unit,
+    onSelectDnsProvider: (DnsProvider) -> Unit,
+    onRefreshNetworkPing: () -> Unit,
     onFindInPageClick: () -> Unit,
     onSelectSearchEngine: (String) -> Unit,
     onClearAllData: () -> Unit,
     onCheckUpdate: () -> Unit,
-    onDismissRequest: () -> Unit
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var showSearchEngineMenu by remember { mutableStateOf(false) }
-
     val searchEngines = listOf(
         "DuckDuckGo" to "https://duckduckgo.com/?q=",
-        "Startpage" to "https://www.startpage.com/sp/search?query=",
         "Brave Search" to "https://search.brave.com/search?q=",
-        "Google" to "https://www.google.com/search?q="
+        "Google" to "https://www.google.com/search?q=",
+        "Startpage" to "https://www.startpage.com/sp/search?query="
     )
 
-    val currentEngineName = searchEngines.firstOrNull { it.second == searchEngineUrl }?.first ?: "Kustom"
-
-    ModalBottomSheet(
-        onDismissRequest = onDismissRequest,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 8.dp
+    // Halaman Penuh Setelan Zenvora (Zero ModalBottomSheet, Zero Floating Popup)
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(OledBlack)
     ) {
+        // Header Bar Layar Penuh
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .background(OledBlack)
+                .padding(horizontal = 8.dp)
+        ) {
+            IconButton(onClick = onDismissRequest) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Kembali",
+                    tint = TextPrimary
+                )
+            }
+            Text(
+                text = "Setelan Zenvora",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        HorizontalDivider(color = DarkOutline)
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp)
+                .weight(1f)
                 .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
-            Text(
-                text = "Pengaturan Browser",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface
+            // 1. Bagian Manajemen Kecepatan Internet & Jaringan Maksimal
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Manajemen Kecepatan Internet",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = ElectricOrange
+                )
+                IconButton(
+                    onClick = onRefreshNetworkPing,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = "Uji Ping Jaringan",
+                        tint = ElectricOrange,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Panel Telemetri Jaringan Real-Time (Murni DarkSurfaceVariant)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(DarkSurfaceVariant)
+                    .border(1.dp, DarkOutline, RoundedCornerShape(12.dp))
+                    .padding(14.dp)
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    NetworkMetricBox(
+                        label = "Unduh Live",
+                        value = networkStats.formattedDownloadSpeed,
+                        highlight = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    NetworkMetricBox(
+                        label = "Unggah Live",
+                        value = networkStats.formattedUploadSpeed,
+                        highlight = false,
+                        modifier = Modifier.weight(1f)
+                    )
+                    NetworkMetricBox(
+                        label = "Puncak",
+                        value = networkStats.formattedPeakSpeed,
+                        highlight = false,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                HorizontalDivider(color = DarkOutline)
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    NetworkMetricBox(
+                        label = "Latensi Ping",
+                        value = if (networkStats.latencyMs > 0) "${networkStats.latencyMs} ms" else "Siap",
+                        highlight = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    NetworkMetricBox(
+                        label = "Cache DNS",
+                        value = "${networkStats.cachedDomainsCount} domain",
+                        highlight = false,
+                        modifier = Modifier.weight(1f)
+                    )
+                    NetworkMetricBox(
+                        label = "Data Sesi",
+                        value = networkStats.formattedSessionTotal,
+                        highlight = false,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            SettingSwitchRow(
+                icon = Icons.Filled.Speed,
+                title = "Akselerasi Jaringan Turbo & Preconnect",
+                subtitle = "Koneksi paralel 16-jalur, DNS in-memory cache, dan buffer unduhan 256 KB",
+                checked = networkStats.isTurboEnabled,
+                onCheckedChange = { onToggleNetworkTurbo() }
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Bagian Engine & Privasi
+            Text(
+                text = "Resolver DNS Cepat (Pilihan Langsung)",
+                style = MaterialTheme.typography.labelMedium,
+                color = TextSecondary
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            DnsProvider.entries.forEach { provider ->
+                val isSelected = networkStats.dnsProvider == provider
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(DarkSurfaceContainer)
+                        .border(
+                            width = if (isSelected) 1.5.dp else 1.dp,
+                            color = if (isSelected) ElectricOrange else DarkOutline,
+                            shape = RoundedCornerShape(10.dp)
+                        )
+                        .clickable { onSelectDnsProvider(provider) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Dns,
+                        contentDescription = null,
+                        tint = if (isSelected) ElectricOrange else TextSecondary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = provider.displayName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = provider.description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary
+                        )
+                    }
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = { onSelectDnsProvider(provider) },
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = ElectricOrange,
+                            unselectedColor = TextSecondary
+                        )
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // 2. Bagian Engine & Privasi
             Text(
                 text = "Privasi & Filter Engine",
                 style = MaterialTheme.typography.labelLarge,
-                color = AccentTeal
+                fontWeight = FontWeight.Bold,
+                color = ElectricOrange
             )
             Spacer(modifier = Modifier.height(10.dp))
 
             SettingSwitchRow(
                 icon = Icons.Filled.Block,
                 title = "Native Rust Ad-Blocker",
-                subtitle = "Total $totalBlockedCount tracker & iklan diblokir",
+                subtitle = "Total $totalBlockedCount tracker & iklan diblokir di tab ini",
                 checked = isAdblockEnabled,
                 onCheckedChange = { onToggleAdblock() }
             )
@@ -127,18 +314,19 @@ fun SettingsSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Bagian Tampilan & Penjelajahan
+            // 3. Bagian Tampilan & Penjelajahan
             Text(
                 text = "Halaman & Penjelajahan",
                 style = MaterialTheme.typography.labelLarge,
-                color = AccentTeal
+                fontWeight = FontWeight.Bold,
+                color = ElectricOrange
             )
             Spacer(modifier = Modifier.height(10.dp))
 
             SettingSwitchRow(
                 icon = Icons.Filled.DesktopWindows,
-                title = "Minta Situs Desktop",
-                subtitle = "Ubah User-Agent ke mode browser desktop",
+                title = "Mode Situs Desktop Permanen",
+                subtitle = "Kunci User-Agent desktop, viewport lebar, dan alihkan m. ke www.",
                 checked = isDesktopMode,
                 onCheckedChange = { onToggleDesktopMode() }
             )
@@ -151,13 +339,14 @@ fun SettingsSheet(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
                     .background(DarkSurfaceContainer)
+                    .border(1.dp, DarkOutline, RoundedCornerShape(10.dp))
                     .clickable { onFindInPageClick() }
                     .padding(horizontal = 14.dp, vertical = 12.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.FindInPage,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = ElectricOrange,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
@@ -165,78 +354,77 @@ fun SettingsSheet(
                     Text(
                         text = "Cari di Halaman",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = TextPrimary
                     )
                     Text(
                         text = "Temukan kata atau frasa dalam halaman web aktif",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = TextSecondary
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Bagian Mesin Pencari
+            // 4. Bagian Mesin Pencari (Inline Radio List - Tanpa Floating Dropdown)
             Text(
-                text = "Pencarian Web",
+                text = "Mesin Pencari Default",
                 style = MaterialTheme.typography.labelLarge,
-                color = AccentTeal
+                fontWeight = FontWeight.Bold,
+                color = ElectricOrange
             )
             Spacer(modifier = Modifier.height(10.dp))
 
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(DarkSurfaceContainer)
-                    .clickable { showSearchEngineMenu = true }
-                    .padding(horizontal = 14.dp, vertical = 12.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Search,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Mesin Pencari Default",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = currentEngineName,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = AccentTeal
-                    )
-                }
-
-                DropdownMenu(
-                    expanded = showSearchEngineMenu,
-                    onDismissRequest = { showSearchEngineMenu = false }
-                ) {
-                    searchEngines.forEach { (name, url) ->
-                        DropdownMenuItem(
-                            text = { Text(name) },
-                            onClick = {
-                                onSelectSearchEngine(url)
-                                showSearchEngineMenu = false
-                            }
+            searchEngines.forEach { (name, url) ->
+                val isSelected = searchEngineUrl == url
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(DarkSurfaceContainer)
+                        .border(
+                            width = if (isSelected) 1.5.dp else 1.dp,
+                            color = if (isSelected) ElectricOrange else DarkOutline,
+                            shape = RoundedCornerShape(10.dp)
                         )
-                    }
+                        .clickable { onSelectSearchEngine(url) }
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Search,
+                        contentDescription = null,
+                        tint = if (isSelected) ElectricOrange else TextSecondary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = TextPrimary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = { onSelectSearchEngine(url) },
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = ElectricOrange,
+                            unselectedColor = TextSecondary
+                        )
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Bagian Pembersihan Data
+            // 5. Bagian Pembersihan Data
             Text(
                 text = "Penyimpanan & Riwayat",
                 style = MaterialTheme.typography.labelLarge,
-                color = AccentTeal
+                fontWeight = FontWeight.Bold,
+                color = ElectricOrange
             )
             Spacer(modifier = Modifier.height(10.dp))
 
@@ -246,37 +434,40 @@ fun SettingsSheet(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
                     .background(DarkSurfaceContainer)
+                    .border(1.dp, DarkOutline, RoundedCornerShape(10.dp))
                     .clickable { onClearAllData() }
                     .padding(horizontal = 14.dp, vertical = 12.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.DeleteSweep,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error,
+                    tint = SecurityRed,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Hapus Histori & Data Penelusuran",
+                        text = "Hapus Histori, Cache DNS & Data Sesi",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error
+                        fontWeight = FontWeight.SemiBold,
+                        color = SecurityRed
                     )
                     Text(
-                        text = "Menghapus entri Room database lokal seketika",
+                        text = "Menghapus entri Room database lokal & mereset cache domain",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = TextSecondary
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Bagian Info & Update
+            // 6. Bagian Informasi Sistem ("Zenvora" murni tanpa kata Browser)
             Text(
                 text = "Informasi Sistem",
                 style = MaterialTheme.typography.labelLarge,
-                color = AccentTeal
+                fontWeight = FontWeight.Bold,
+                color = ElectricOrange
             )
             Spacer(modifier = Modifier.height(10.dp))
 
@@ -286,47 +477,78 @@ fun SettingsSheet(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
                     .background(DarkSurfaceContainer)
+                    .border(1.dp, DarkOutline, RoundedCornerShape(10.dp))
                     .padding(horizontal = 14.dp, vertical = 12.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.SystemUpdate,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = ElectricOrange,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Zenvora Browser v${BuildConfig.VERSION_NAME}",
+                        text = "Zenvora v${BuildConfig.VERSION_NAME}",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
                     )
                     Text(
-                        text = "Engine: Mozilla GeckoView (Multi-process)",
+                        text = "GeckoView Engine x Native Rust Shield",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = TextSecondary
                     )
                 }
                 Button(
                     onClick = onCheckUpdate,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = AccentTeal,
-                        contentColor = MaterialTheme.colorScheme.surface
+                        containerColor = ElectricOrange,
+                        contentColor = OledBlack
                     ),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Text(text = "Cek Update")
+                    Text(
+                        text = "Cek Update",
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(30.dp))
+            Spacer(modifier = Modifier.height(28.dp))
         }
     }
 }
 
 @Composable
+private fun NetworkMetricBox(
+    label: String,
+    value: String,
+    highlight: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        horizontalAlignment = Alignment.Start,
+        modifier = modifier
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = TextSecondary
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = value,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = if (highlight) ElectricOrange else TextPrimary
+        )
+    }
+}
+
+@Composable
 private fun SettingSwitchRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     title: String,
     subtitle: String,
     checked: Boolean,
@@ -338,12 +560,17 @@ private fun SettingSwitchRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
             .background(DarkSurfaceContainer)
+            .border(
+                width = 1.dp,
+                color = if (checked) ElectricOrange else DarkOutline,
+                shape = RoundedCornerShape(10.dp)
+            )
             .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (checked) AccentTeal else MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = if (checked) ElectricOrange else TextSecondary,
             modifier = Modifier.size(20.dp)
         )
         Spacer(modifier = Modifier.width(12.dp))
@@ -351,20 +578,23 @@ private fun SettingSwitchRow(
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
+                fontWeight = FontWeight.Medium,
+                color = TextPrimary
             )
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = TextSecondary
             )
         }
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = MaterialTheme.colorScheme.surface,
-                checkedTrackColor = AccentTeal
+                checkedThumbColor = OledBlack,
+                checkedTrackColor = ElectricOrange,
+                uncheckedThumbColor = TextSecondary,
+                uncheckedTrackColor = DarkSurfaceVariant
             )
         )
     }

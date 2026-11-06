@@ -7,6 +7,9 @@ import com.zenvora.browser.core.download.BrowserDownloadManager
 import com.zenvora.browser.core.download.DownloadItem
 import com.zenvora.browser.core.engine.BrowserSession
 import com.zenvora.browser.core.engine.GeckoRuntimeManager
+import com.zenvora.browser.core.network.DnsProvider
+import com.zenvora.browser.core.network.NetworkSpeedManager
+import com.zenvora.browser.core.network.NetworkStats
 import com.zenvora.browser.core.updater.AppUpdateInfo
 import com.zenvora.browser.core.updater.UpdateManager
 import com.zenvora.browser.core.updater.UpdateState
@@ -35,6 +38,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val database = ZenvoraDatabase.getInstance(context)
     private val preferencesRepository = PreferencesRepository(context)
 
+    val networkSpeedManager = NetworkSpeedManager()
+    val networkStats: StateFlow<NetworkStats> = networkSpeedManager.networkStats
+
     val updateManager = UpdateManager(context)
     val updateState: StateFlow<UpdateState> = updateManager.updateState
 
@@ -49,6 +55,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     val searchEngineUrl: StateFlow<String> = preferencesRepository.searchEngineUrl
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "https://duckduckgo.com/?q=")
+
+    val isNetworkTurboEnabled: StateFlow<Boolean> = preferencesRepository.isNetworkTurboEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
+
+    val dnsProviderId: StateFlow<String> = preferencesRepository.dnsProviderId
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "cloudflare")
 
     val historyEntries: StateFlow<List<HistoryEntity>> = database.historyDao().getAllHistory()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -71,7 +83,17 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val securityInfo: StateFlow<SecurityInfo> = _securityInfo.asStateFlow()
 
     init {
-        // Inisialisasi tab pertama ke halaman beranda cepat (Chrome-style New Tab Page)
+        networkSpeedManager.startMonitoring(viewModelScope)
+        viewModelScope.launch {
+            preferencesRepository.isNetworkTurboEnabled.collect { enabled ->
+                networkSpeedManager.setTurboEnabled(enabled)
+            }
+        }
+        viewModelScope.launch {
+            preferencesRepository.dnsProviderId.collect { id ->
+                networkSpeedManager.setDnsProvider(DnsProvider.fromId(id))
+            }
+        }
         createNewTab("about:blank")
     }
 
@@ -172,6 +194,11 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         if (trimmed.isEmpty()) return
 
         val targetUrl = resolveUrlOrQuery(trimmed)
+        if (isNetworkTurboEnabled.value && targetUrl.startsWith("http")) {
+            viewModelScope.launch {
+                networkSpeedManager.warmupAndMeasureLatency(targetUrl)
+            }
+        }
         getActiveSession()?.loadUri(targetUrl)
     }
 
@@ -239,6 +266,31 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun toggleNetworkTurbo() {
+        viewModelScope.launch {
+            val next = !isNetworkTurboEnabled.value
+            preferencesRepository.setNetworkTurboEnabled(next)
+            networkSpeedManager.setTurboEnabled(next)
+            if (next) {
+                networkSpeedManager.warmupAndMeasureLatency(_activeTabState.value.url)
+            }
+        }
+    }
+
+    fun selectDnsProvider(provider: DnsProvider) {
+        viewModelScope.launch {
+            preferencesRepository.setDnsProviderId(provider.id)
+            networkSpeedManager.setDnsProvider(provider)
+            networkSpeedManager.warmupAndMeasureLatency(_activeTabState.value.url)
+        }
+    }
+
+    fun refreshNetworkLatency() {
+        viewModelScope.launch {
+            networkSpeedManager.warmupAndMeasureLatency(_activeTabState.value.url)
+        }
+    }
+
     fun setSearchEngine(url: String) {
         viewModelScope.launch {
             preferencesRepository.setSearchEngineUrl(url)
@@ -281,6 +333,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun clearAllBrowsingData() {
         viewModelScope.launch {
             database.historyDao().clearAllHistory()
+            networkSpeedManager.clearDnsCache()
             getActiveSession()?.loadUri("about:blank")
         }
     }

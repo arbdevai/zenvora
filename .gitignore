@@ -8,6 +8,6 @@ release.keystore
 local.properties
 .idea/
 *.iml
-scripts/
+/scripts/
 native/**/target/
 app/src/main/jniLibs/

@@ -30,9 +30,12 @@ class BrowserDownloadManager(private val context: Context) {
     val downloads: StateFlow<List<DownloadItem>> = _downloads.asStateFlow()
 
     private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
+        .connectionPool(okhttp3.ConnectionPool(16, 5, TimeUnit.MINUTES))
+        .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .followRedirects(true)
+        .followSslRedirects(true)
+        .retryOnConnectionFailure(true)
         .build()
 
     suspend fun startDownload(url: String, suggestedFilename: String) = withContext(Dispatchers.IO) {
@@ -71,7 +74,7 @@ class BrowserDownloadManager(private val context: Context) {
 
             body.byteStream().use { input ->
                 FileOutputStream(partFile).use { output ->
-                    val buffer = ByteArray(64 * 1024)
+                    val buffer = ByteArray(256 * 1024)
                     var bytesCopied = 0L
                     var read: Int
 

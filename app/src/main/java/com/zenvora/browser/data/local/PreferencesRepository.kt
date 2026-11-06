@@ -18,6 +18,8 @@ class PreferencesRepository(private val context: Context) {
         val ADBLOCK_ENABLED = booleanPreferencesKey("adblock_enabled")
         val SEARCH_ENGINE_URL = stringPreferencesKey("search_engine_url")
         val STRICT_PRIVACY = booleanPreferencesKey("strict_privacy")
+        val NETWORK_TURBO = booleanPreferencesKey("network_turbo")
+        val DNS_PROVIDER_ID = stringPreferencesKey("dns_provider_id")
     }
 
     val isAdblockEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -30,6 +32,14 @@ class PreferencesRepository(private val context: Context) {
 
     val isStrictPrivacy: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.STRICT_PRIVACY] ?: true
+    }
+
+    val isNetworkTurboEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.NETWORK_TURBO] ?: true
+    }
+
+    val dnsProviderId: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.DNS_PROVIDER_ID] ?: "cloudflare"
     }
 
     suspend fun setAdblockEnabled(enabled: Boolean) {
@@ -47,6 +57,18 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setStrictPrivacy(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.STRICT_PRIVACY] = enabled
+        }
+    }
+
+    suspend fun setNetworkTurboEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.NETWORK_TURBO] = enabled
+        }
+    }
+
+    suspend fun setDnsProviderId(id: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.DNS_PROVIDER_ID] = id
         }
     }
 }

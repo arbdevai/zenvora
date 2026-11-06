@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -41,7 +43,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
@@ -52,6 +53,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zenvora.browser.core.network.NetworkStats
 import com.zenvora.browser.data.local.entity.BookmarkEntity
 import com.zenvora.browser.ui.theme.DarkOutline
 import com.zenvora.browser.ui.theme.DarkSurfaceContainer
@@ -73,17 +75,19 @@ fun ChromeNewTabPage(
     isIncognito: Boolean,
     bookmarks: List<BookmarkEntity>,
     totalBlockedCount: Int,
+    networkStats: NetworkStats,
     onNavigate: (String) -> Unit,
+    onOpenNetworkSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
     val focusManager = LocalFocusManager.current
-    val accentColor = if (isIncognito) Color(0xFFFF9E40) else ElectricOrange
+    val accentColor = if (isIncognito) ElectricOrangeLight else ElectricOrange
 
     val defaultQuickSites = remember {
         listOf(
             QuickDialSite("Google", "https://www.google.com", Icons.Filled.Search),
-            QuickDialSite("YouTube", "https://m.youtube.com", Icons.Filled.PlayArrow),
+            QuickDialSite("YouTube", "https://www.youtube.com", Icons.Filled.PlayArrow),
             QuickDialSite("GitHub", "https://github.com", Icons.Filled.Code),
             QuickDialSite("DuckDuckGo", "https://duckduckgo.com", Icons.Filled.Shield),
             QuickDialSite("Wikipedia", "https://id.wikipedia.org", Icons.Filled.Language),
@@ -98,12 +102,13 @@ fun ChromeNewTabPage(
         modifier = modifier
             .fillMaxSize()
             .background(OledBlack)
+            .imePadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 36.dp)
+            .padding(horizontal = 24.dp, vertical = 28.dp)
     ) {
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // Header Logo / Brand Chrome-like
+        // Header Identitas ZENVORA Murni
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
@@ -113,7 +118,7 @@ fun ChromeNewTabPage(
                 modifier = Modifier
                     .size(44.dp)
                     .clip(CircleShape)
-                    .background(DarkSurfaceContainer)
+                    .background(OledBlack)
                     .border(1.5.dp, accentColor, CircleShape)
             ) {
                 Icon(
@@ -126,7 +131,7 @@ fun ChromeNewTabPage(
             Spacer(modifier = Modifier.width(12.dp))
             Column {
                 Text(
-                    text = if (isIncognito) "ZENVORA INCOGNITO" else "ZENVORA",
+                    text = if (isIncognito) "ZENVORA SAMARAN" else "ZENVORA",
                     style = TextStyle(
                         color = TextPrimary,
                         fontSize = 24.sp,
@@ -135,7 +140,7 @@ fun ChromeNewTabPage(
                     )
                 )
                 Text(
-                    text = if (isIncognito) "Mode Samaran Tanpa Riwayat" else "Gecko Engine x Rust Adblock",
+                    text = if (isIncognito) "Mode Privasi Tanpa Riwayat" else "Gecko Engine x Rust Shield",
                     style = TextStyle(
                         color = accentColor,
                         fontSize = 11.sp,
@@ -145,9 +150,9 @@ fun ChromeNewTabPage(
             }
         }
 
-        Spacer(modifier = Modifier.height(28.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
-        // Search Pill ala Chrome Android
+        // Search Pill ala Chrome Android (Background murni DarkSurfaceContainer, border ElectricOrange)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
@@ -155,7 +160,7 @@ fun ChromeNewTabPage(
                 .height(52.dp)
                 .clip(RoundedCornerShape(26.dp))
                 .background(DarkSurfaceContainer)
-                .border(1.5.dp, ElectricOrange.copy(alpha = 0.65f), RoundedCornerShape(26.dp))
+                .border(1.5.dp, ElectricOrange, RoundedCornerShape(26.dp))
                 .padding(horizontal = 18.dp)
         ) {
             Icon(
@@ -188,8 +193,10 @@ fun ChromeNewTabPage(
                     keyboardActions = KeyboardActions(
                         onGo = {
                             if (searchQuery.isNotBlank()) {
+                                val target = searchQuery
+                                searchQuery = ""
                                 focusManager.clearFocus()
-                                onNavigate(searchQuery)
+                                onNavigate(target)
                             }
                         }
                     ),
@@ -198,9 +205,9 @@ fun ChromeNewTabPage(
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(28.dp))
 
-        // Grid 4x2 Speed Dial ala Chrome
+        // Grid 4x2 Speed Dial ala Chrome (Tanpa background kecampur oranye)
         Text(
             text = "Pintasan Cepat",
             style = MaterialTheme.typography.labelMedium,
@@ -216,7 +223,7 @@ fun ChromeNewTabPage(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 18.dp)
+                    .padding(bottom = 16.dp)
             ) {
                 rowItems.forEach { site ->
                     Column(
@@ -259,54 +266,112 @@ fun ChromeNewTabPage(
             }
         }
 
-        // Statistik Perlindungan Privasi Ringkas (Card True Dark x Electric Orange)
+        // Baris 2 Panel Status: Perisai Adblock & Manajemen Kecepatan Internet (Murni DarkSurfaceVariant)
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(DarkSurfaceVariant)
-                .border(1.dp, DarkOutline, RoundedCornerShape(14.dp))
-                .padding(horizontal = 16.dp, vertical = 14.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Box(
-                contentAlignment = Alignment.Center,
+            // Card 1: Adblock Shield
+            Column(
                 modifier = Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(ElectricOrange.copy(alpha = 0.15f))
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(DarkSurfaceVariant)
+                    .border(1.dp, DarkOutline, RoundedCornerShape(12.dp))
+                    .padding(14.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Shield,
-                    contentDescription = null,
-                    tint = ElectricOrange,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-            Spacer(modifier = Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Filled.Shield,
+                        contentDescription = null,
+                        tint = ElectricOrange,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Rust Shield",
+                        style = TextStyle(
+                            color = TextSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Perlindungan Tracker & Iklan Aktif",
+                    text = totalBlockedCount.toString(),
+                    style = TextStyle(
+                        color = ElectricOrange,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                )
+                Text(
+                    text = "Pelacak Diblokir",
                     style = TextStyle(
                         color = TextPrimary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "$totalBlockedCount permintaan pelacak diblokir di sesi ini",
-                    style = TextStyle(
-                        color = ElectricOrangeLight,
                         fontSize = 11.sp
                     )
+                )
+            }
+
+            // Card 2: Manajemen Kecepatan Jaringan
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(DarkSurfaceVariant)
+                    .border(1.dp, DarkOutline, RoundedCornerShape(12.dp))
+                    .clickable { onOpenNetworkSettings() }
+                    .padding(14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Filled.Speed,
+                        contentDescription = null,
+                        tint = ElectricOrange,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (networkStats.isTurboEnabled) "Turbo Aktif" else "Jaringan",
+                        style = TextStyle(
+                            color = TextSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = networkStats.formattedDownloadSpeed,
+                    style = TextStyle(
+                        color = ElectricOrange,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    ),
+                    maxLines = 1
+                )
+                val pingLabel = if (networkStats.latencyMs > 0) {
+                    "Ping ${networkStats.latencyMs} ms | ${networkStats.dnsProvider.primaryIp}"
+                } else {
+                    "DNS ${networkStats.dnsProvider.primaryIp}"
+                }
+                Text(
+                    text = pingLabel,
+                    style = TextStyle(
+                        color = TextPrimary,
+                        fontSize = 11.sp
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
 
         // Bookmark Tersimpan (Jika ada)
         if (bookmarks.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(22.dp))
             Text(
                 text = "Bookmark Tersimpan",
                 style = MaterialTheme.typography.labelMedium,
@@ -323,6 +388,7 @@ fun ChromeNewTabPage(
                         .padding(bottom = 8.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(DarkSurfaceVariant)
+                        .border(1.dp, DarkOutline, RoundedCornerShape(10.dp))
                         .clickable { onNavigate(bm.url) }
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                 ) {

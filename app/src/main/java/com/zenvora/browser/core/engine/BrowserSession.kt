@@ -8,7 +8,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.ContentBlocking
+import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSessionSettings
@@ -20,9 +22,14 @@ class BrowserSession(
     val geckoSession: GeckoSession = createGeckoSession(isIncognito)
 ) {
     companion object {
+        private const val DESKTOP_USER_AGENT =
+            "Mozilla/5.0 (X11; Linux x86_64; rv:136.0) Gecko/20100101 Firefox/136.0"
+
         private fun createGeckoSession(isIncognito: Boolean): GeckoSession {
             val settings = GeckoSessionSettings.Builder()
                 .usePrivateMode(isIncognito)
+                .userAgentMode(GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
+                .viewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE)
                 .build()
             return GeckoSession(settings)
         }
@@ -42,6 +49,7 @@ class BrowserSession(
     val securityInfo: StateFlow<SecurityInfo> = _securityInfo.asStateFlow()
 
     private var isOpen = false
+    private var desktopModeEnabled = false
 
     fun initSession(context: Context, runtime: GeckoRuntime) {
         if (!isOpen) {
@@ -51,14 +59,57 @@ class BrowserSession(
         }
     }
 
+    private fun applyDesktopSettings(enabled: Boolean) {
+        if (enabled) {
+            geckoSession.settings.userAgentMode = GeckoSessionSettings.USER_AGENT_MODE_DESKTOP
+            geckoSession.settings.viewportMode = GeckoSessionSettings.VIEWPORT_MODE_DESKTOP
+            geckoSession.settings.userAgentOverride = DESKTOP_USER_AGENT
+        } else {
+            geckoSession.settings.userAgentMode = GeckoSessionSettings.USER_AGENT_MODE_MOBILE
+            geckoSession.settings.viewportMode = GeckoSessionSettings.VIEWPORT_MODE_MOBILE
+            geckoSession.settings.userAgentOverride = null
+        }
+    }
+
+    private fun rewriteMobileUrlForDesktop(rawUrl: String): String {
+        if (!desktopModeEnabled || !rawUrl.startsWith("http")) return rawUrl
+        return try {
+            val uri = URI(rawUrl)
+            val host = uri.host ?: return rawUrl
+            val newHost = when {
+                host.startsWith("m.") && host.length > 2 -> "www.${host.substring(2)}"
+                host.startsWith("mobile.") && host.length > 7 -> "www.${host.substring(7)}"
+                host.contains(".m.") -> host.replace(".m.", ".")
+                else -> host
+            }
+            if (newHost != host) {
+                URI(
+                    uri.scheme,
+                    uri.userInfo,
+                    newHost,
+                    uri.port,
+                    uri.path,
+                    uri.query,
+                    uri.fragment
+                ).toString()
+            } else {
+                rawUrl
+            }
+        } catch (_: Exception) {
+            rawUrl
+        }
+    }
+
     private fun setupDelegates() {
         geckoSession.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(session: GeckoSession, url: String) {
+                applyDesktopSettings(desktopModeEnabled)
                 _tabState.update {
                     it.copy(
                         url = url,
                         isLoading = true,
-                        progress = 10
+                        progress = 10,
+                        isDesktopMode = desktopModeEnabled
                     )
                 }
                 updateSecurityInfo(url, isSecure = false)
@@ -68,7 +119,8 @@ class BrowserSession(
                 _tabState.update {
                     it.copy(
                         isLoading = false,
-                        progress = 100
+                        progress = 100,
+                        isDesktopMode = desktopModeEnabled
                     )
                 }
             }
@@ -98,6 +150,22 @@ class BrowserSession(
         }
 
         geckoSession.navigationDelegate = object : GeckoSession.NavigationDelegate {
+            override fun onLoadRequest(
+                session: GeckoSession,
+                request: GeckoSession.NavigationDelegate.LoadRequest
+            ): GeckoResult<AllowOrDeny> {
+                applyDesktopSettings(desktopModeEnabled)
+                val targetUri = request.uri
+                if (desktopModeEnabled && targetUri.startsWith("http")) {
+                    val desktopUri = rewriteMobileUrlForDesktop(targetUri)
+                    if (desktopUri != targetUri) {
+                        session.loadUri(desktopUri)
+                        return GeckoResult.fromValue(AllowOrDeny.DENY)
+                    }
+                }
+                return GeckoResult.fromValue(AllowOrDeny.ALLOW)
+            }
+
             override fun onLocationChange(
                 session: GeckoSession,
                 url: String?,
@@ -105,7 +173,12 @@ class BrowserSession(
                 hasUserGesture: Boolean
             ) {
                 val safeUrl = url ?: "about:blank"
-                _tabState.update { it.copy(url = safeUrl) }
+                _tabState.update {
+                    it.copy(
+                        url = safeUrl,
+                        isDesktopMode = desktopModeEnabled
+                    )
+                }
                 updateSecurityInfo(safeUrl, _tabState.value.isSecure)
             }
 
@@ -169,11 +242,14 @@ class BrowserSession(
     }
 
     fun loadUri(uri: String) {
-        geckoSession.loadUri(uri)
+        applyDesktopSettings(desktopModeEnabled)
+        val normalized = rewriteMobileUrlForDesktop(uri)
+        geckoSession.loadUri(normalized)
     }
 
     fun goBack(): Boolean {
         if (_tabState.value.canGoBack) {
+            applyDesktopSettings(desktopModeEnabled)
             geckoSession.goBack()
             return true
         }
@@ -182,6 +258,7 @@ class BrowserSession(
 
     fun goForward(): Boolean {
         if (_tabState.value.canGoForward) {
+            applyDesktopSettings(desktopModeEnabled)
             geckoSession.goForward()
             return true
         }
@@ -189,18 +266,23 @@ class BrowserSession(
     }
 
     fun reload() {
-        geckoSession.reload()
+        applyDesktopSettings(desktopModeEnabled)
+        geckoSession.reload(GeckoSession.LOAD_FLAGS_BYPASS_CACHE)
     }
 
     fun setDesktopMode(enabled: Boolean) {
-        val mode = if (enabled) {
-            GeckoSessionSettings.USER_AGENT_MODE_DESKTOP
-        } else {
-            GeckoSessionSettings.USER_AGENT_MODE_MOBILE
-        }
-        geckoSession.settings.userAgentMode = mode
+        desktopModeEnabled = enabled
+        applyDesktopSettings(enabled)
         _tabState.update { it.copy(isDesktopMode = enabled) }
-        reload()
+        val currentUrl = _tabState.value.url
+        if (currentUrl.startsWith("http")) {
+            val targetUrl = if (enabled) rewriteMobileUrlForDesktop(currentUrl) else currentUrl
+            if (targetUrl != currentUrl) {
+                geckoSession.loadUri(targetUrl)
+            } else {
+                geckoSession.reload(GeckoSession.LOAD_FLAGS_BYPASS_CACHE)
+            }
+        }
     }
 
     fun findInPage(query: String) {
