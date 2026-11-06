@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zenvora.browser.ui.components.BrowserGeckoView
 import com.zenvora.browser.ui.components.BrowserOmnibox
+import com.zenvora.browser.ui.components.FindInPageBar
 import com.zenvora.browser.ui.components.HistoryBookmarkSheet
 import com.zenvora.browser.ui.components.SecurityDetailDialog
 import com.zenvora.browser.ui.components.SettingsSheet
@@ -64,6 +65,7 @@ fun BrowserScreen(
     // Penanganan tombol kembali Android
     BackHandler {
         when {
+            activeTabState.isFindInPageActive -> viewModel.closeFindInPage()
             showSecurityDialog -> showSecurityDialog = false
             showTabOverview -> showTabOverview = false
             showHistorySheet -> showHistorySheet = false
@@ -84,6 +86,16 @@ fun BrowserScreen(
                 .imePadding()
                 .background(OledBlack)
         ) {
+            // Find in Page Bar
+            if (activeTabState.isFindInPageActive) {
+                FindInPageBar(
+                    query = activeTabState.findQuery,
+                    onQueryChange = { viewModel.findInPage(it) },
+                    onNext = { viewModel.findNext() },
+                    onPrevious = { viewModel.findPrevious() },
+                    onClose = { viewModel.closeFindInPage() }
+                )
+            }
             // Indikator Progres Loading Tipis
             AnimatedVisibility(
                 visible = activeTabState.isLoading,
@@ -178,10 +190,16 @@ fun BrowserScreen(
         SettingsSheet(
             isAdblockEnabled = isAdblockEnabled,
             isStrictPrivacy = isStrictPrivacy,
+            isDesktopMode = activeTabState.isDesktopMode,
             searchEngineUrl = searchEngineUrl,
             totalBlockedCount = activeTabState.blockedRequestsCount,
             onToggleAdblock = { viewModel.toggleAdblock() },
             onToggleStrictPrivacy = { viewModel.toggleStrictPrivacy() },
+            onToggleDesktopMode = { viewModel.toggleDesktopMode() },
+            onFindInPageClick = {
+                showSettingsSheet = false
+                viewModel.startFindInPage()
+            },
             onSelectSearchEngine = { viewModel.setSearchEngine(it) },
             onClearAllData = {
                 viewModel.clearAllBrowsingData()

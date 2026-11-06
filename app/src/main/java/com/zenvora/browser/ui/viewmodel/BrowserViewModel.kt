@@ -186,6 +186,32 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         getActiveSession()?.reload()
     }
 
+    fun toggleDesktopMode() {
+        val current = _activeTabState.value.isDesktopMode
+        getActiveSession()?.setDesktopMode(!current)
+    }
+
+    fun startFindInPage() {
+        _activeTabState.update { it.copy(isFindInPageActive = true) }
+    }
+
+    fun findInPage(query: String) {
+        getActiveSession()?.findInPage(query)
+    }
+
+    fun findNext() {
+        getActiveSession()?.findNext()
+    }
+
+    fun findPrevious() {
+        getActiveSession()?.findPrevious()
+    }
+
+    fun closeFindInPage() {
+        getActiveSession()?.clearFindInPage()
+        _activeTabState.update { it.copy(isFindInPageActive = false, findQuery = "") }
+    }
+
     fun toggleAdblock() {
         viewModelScope.launch {
             val current = isAdblockEnabled.value

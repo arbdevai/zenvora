@@ -9,5 +9,8 @@ data class BrowserTab(
     val canGoBack: Boolean = false,
     val canGoForward: Boolean = false,
     val isSecure: Boolean = false,
-    val blockedRequestsCount: Int = 0
+    val blockedRequestsCount: Int = 0,
+    val isDesktopMode: Boolean = false,
+    val isFindInPageActive: Boolean = false,
+    val findQuery: String = ""
 )

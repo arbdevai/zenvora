@@ -17,7 +17,9 @@
 - [x] In-App Updater System (`UpdateManager`): Streaming OkHttp chunk 64KB, isolasi `.part`, verifikasi 4-lapis `isApkValid`, dan pemicuan instalasi mandiri via `FileProvider`.
 - [x] Background Browser Download Manager (`BrowserDownloadManager`): Unduhan file langsung terisolasi dengan pelacakan progres.
 - [x] Settings & Privacy Screen (`SettingsSheet` & `UpdateDialog`): Pengaturan mesin pencari (DuckDuckGo, Startpage, Brave, Google), toggle adblocker, strict privacy, dan tombol cek pembaruan sistem.
-- [x] Pre-flight Syntax Verification (27 file Kotlin, 8 file XML, 0 hard errors)
+- [x] Mode Situs Desktop Dinamis (`GeckoSessionSettings.USER_AGENT_MODE_DESKTOP` / `MOBILE` toggle per-tab).
+- [x] Pencarian Teks di Halaman (`FindInPageBar` + `geckoSession.finder` dengan navigasi match sebelumnya/berikutnya).
+- [x] Pre-flight Syntax Verification (28 file Kotlin, 8 file XML, 0 hard errors)
 
 ## Catatan Bug Terselesaikan & Workaround (Anti-Mengulang Masalah)
 - *Catatan #01:* GeckoView membutuhkan registrasi repositori Maven Mozilla `https://maven.mozilla.org/maven2/` di `settings.gradle.kts`.

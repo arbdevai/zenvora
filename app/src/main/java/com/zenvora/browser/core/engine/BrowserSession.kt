@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.update
 import org.mozilla.geckoview.ContentBlocking
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.GeckoSessionSettings
 import java.net.URI
 
 class BrowserSession(
@@ -169,6 +170,45 @@ class BrowserSession(
 
     fun reload() {
         geckoSession.reload()
+    }
+
+    fun setDesktopMode(enabled: Boolean) {
+        val mode = if (enabled) {
+            GeckoSessionSettings.USER_AGENT_MODE_DESKTOP
+        } else {
+            GeckoSessionSettings.USER_AGENT_MODE_MOBILE
+        }
+        geckoSession.settings.userAgentMode = mode
+        _tabState.update { it.copy(isDesktopMode = enabled) }
+        reload()
+    }
+
+    fun findInPage(query: String) {
+        _tabState.update { it.copy(isFindInPageActive = true, findQuery = query) }
+        if (query.isNotEmpty()) {
+            geckoSession.finder.find(query, GeckoSession.Finder.FIND_FLAG_NONE)
+        } else {
+            geckoSession.finder.clear()
+        }
+    }
+
+    fun findNext() {
+        val query = _tabState.value.findQuery
+        if (query.isNotEmpty()) {
+            geckoSession.finder.find(query, GeckoSession.Finder.FIND_FLAG_NONE)
+        }
+    }
+
+    fun findPrevious() {
+        val query = _tabState.value.findQuery
+        if (query.isNotEmpty()) {
+            geckoSession.finder.find(query, GeckoSession.Finder.FIND_FLAG_BACKWARDS)
+        }
+    }
+
+    fun clearFindInPage() {
+        _tabState.update { it.copy(isFindInPageActive = false, findQuery = "") }
+        geckoSession.finder.clear()
     }
 
     fun close() {

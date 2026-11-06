@@ -17,7 +17,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SystemUpdate
@@ -53,10 +55,13 @@ import com.zenvora.browser.ui.theme.DarkSurfaceContainer
 fun SettingsSheet(
     isAdblockEnabled: Boolean,
     isStrictPrivacy: Boolean,
+    isDesktopMode: Boolean,
     searchEngineUrl: String,
     totalBlockedCount: Int,
     onToggleAdblock: () -> Unit,
     onToggleStrictPrivacy: () -> Unit,
+    onToggleDesktopMode: () -> Unit,
+    onFindInPageClick: () -> Unit,
     onSelectSearchEngine: (String) -> Unit,
     onClearAllData: () -> Unit,
     onCheckUpdate: () -> Unit,
@@ -119,6 +124,56 @@ fun SettingsSheet(
                 checked = isStrictPrivacy,
                 onCheckedChange = { onToggleStrictPrivacy() }
             )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Bagian Tampilan & Penjelajahan
+            Text(
+                text = "Halaman & Penjelajahan",
+                style = MaterialTheme.typography.labelLarge,
+                color = AccentTeal
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+
+            SettingSwitchRow(
+                icon = Icons.Filled.DesktopWindows,
+                title = "Minta Situs Desktop",
+                subtitle = "Ubah User-Agent ke mode browser desktop",
+                checked = isDesktopMode,
+                onCheckedChange = { onToggleDesktopMode() }
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(DarkSurfaceContainer)
+                    .clickable { onFindInPageClick() }
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.FindInPage,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Cari di Halaman",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Temukan kata atau frasa dalam halaman web aktif",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(20.dp))
 
