@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -35,7 +36,9 @@ data class AppUpdateInfo(
     val versionCode: Long,
     val downloadUrl: String,
     val releaseNotes: String,
-    val fileSizeBytes: Long
+    val fileSizeBytes: Long,
+    val matchedAbi: String = "arm64-v8a",
+    val assetName: String = ""
 )
 
 class UpdateManager(private val context: Context) {
@@ -53,6 +56,76 @@ class UpdateManager(private val context: Context) {
 
     private val updatesDir: File
         get() = File(context.cacheDir, "updates").apply { if (!exists()) mkdirs() }
+
+    /**
+     * Mendeteksi arsitektur CPU utama perangkat (fokus pada arm64-v8a dan armeabi-v7a).
+     */
+    fun getDevicePrimaryArmAbi(): String {
+        val supported = Build.SUPPORTED_ABIS ?: emptyArray()
+        for (abi in supported) {
+            if (abi.equals("arm64-v8a", ignoreCase = true)) return "arm64-v8a"
+            if (abi.equals("armeabi-v7a", ignoreCase = true)) return "armeabi-v7a"
+        }
+        return supported.firstOrNull() ?: "arm64-v8a"
+    }
+
+    /**
+     * Memilih aset APK dari daftar GitHub Release yang paling cocok dengan ABI perangkat:
+     * 1. Prioritas utama: Nama aset mengandung ABI eksak perangkat (arm64-v8a atau armeabi-v7a).
+     * 2. Prioritas kedua: Jika perangkat 64-bit (arm64-v8a) tapi hanya ada armeabi-v7a atau universal.
+     * 3. Prioritas ketiga: Aset APK universal / standar pertama yang tersedia.
+     */
+    private fun selectBestApkAsset(assets: JSONArray?): Triple<String, Long, String>? {
+        if (assets == null || assets.length() == 0) return null
+
+        val apkAssets = mutableListOf<Triple<String, String, Long>>() // (name, url, size)
+        for (i in 0 until assets.length()) {
+            val obj = assets.getJSONObject(i)
+            val name = obj.optString("name", "")
+            val url = obj.optString("browser_download_url", "")
+            val size = obj.optLong("size", 0L)
+            if (name.endsWith(".apk", ignoreCase = true) && url.isNotEmpty()) {
+                apkAssets.add(Triple(name, url, size))
+            }
+        }
+
+        if (apkAssets.isEmpty()) return null
+
+        val deviceAbi = getDevicePrimaryArmAbi()
+
+        // 1. Cari yang cocok persis dengan ABI utama perangkat (arm64-v8a atau armeabi-v7a)
+        val exactMatch = apkAssets.firstOrNull { (name, _, _) ->
+            name.contains(deviceAbi, ignoreCase = true)
+        }
+        if (exactMatch != null) {
+            return Triple(exactMatch.second, exactMatch.third, "$deviceAbi (${exactMatch.first})")
+        }
+
+        // 2. Cari APK universal
+        val universalMatch = apkAssets.firstOrNull { (name, _, _) ->
+            name.contains("universal", ignoreCase = true)
+        }
+        if (universalMatch != null) {
+            return Triple(universalMatch.second, universalMatch.third, "universal (${universalMatch.first})")
+        }
+
+        // 3. Jika perangkat arm64-v8a dan hanya ada armeabi-v7a (atau sebaliknya jika cuma 1 APK tanpa label ABI)
+        val fallback = apkAssets.firstOrNull { (name, _, _) ->
+            if (deviceAbi == "armeabi-v7a") {
+                // Perangkat 32-bit TIDAK BISA memasang APK khusus arm64-v8a
+                !name.contains("arm64-v8a", ignoreCase = true)
+            } else {
+                true
+            }
+        } ?: return null
+
+        val detectedTag = when {
+            fallback.first.contains("arm64-v8a", ignoreCase = true) -> "arm64-v8a"
+            fallback.first.contains("armeabi-v7a", ignoreCase = true) -> "armeabi-v7a"
+            else -> deviceAbi
+        }
+        return Triple(fallback.second, fallback.third, "$detectedTag (${fallback.first})")
+    }
 
     suspend fun checkForUpdates(releasesApiUrl: String) = withContext(Dispatchers.IO) {
         _updateState.value = UpdateState.Checking
@@ -81,25 +154,14 @@ class UpdateManager(private val context: Context) {
             val releaseNotes = json.optString("body", "Pembaruan performa dan keamanan sistem.")
             val assets = json.optJSONArray("assets")
 
-            var downloadUrl = ""
-            var fileSizeBytes = 0L
-
-            if (assets != null) {
-                for (i in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(i)
-                    val name = asset.optString("name", "")
-                    if (name.endsWith(".apk")) {
-                        downloadUrl = asset.optString("browser_download_url", "")
-                        fileSizeBytes = asset.optLong("size", 0L)
-                        break
-                    }
-                }
-            }
-
-            if (downloadUrl.isEmpty() || tagName.isEmpty()) {
+            val selectedAsset = selectBestApkAsset(assets)
+            if (selectedAsset == null || tagName.isEmpty()) {
                 _updateState.value = UpdateState.NoUpdateAvailable
                 return@withContext
             }
+
+            val (downloadUrl, fileSizeBytes, matchedAbiLabel) = selectedAsset
+            val deviceAbi = getDevicePrimaryArmAbi()
 
             if (isNewerVersion(tagName, BuildConfig.VERSION_NAME)) {
                 val info = AppUpdateInfo(
@@ -107,7 +169,9 @@ class UpdateManager(private val context: Context) {
                     versionCode = BuildConfig.VERSION_CODE + 1L,
                     downloadUrl = downloadUrl,
                     releaseNotes = releaseNotes,
-                    fileSizeBytes = fileSizeBytes
+                    fileSizeBytes = fileSizeBytes,
+                    matchedAbi = deviceAbi,
+                    assetName = matchedAbiLabel
                 )
                 _updateState.value = UpdateState.UpdateAvailable(info)
             } else {
@@ -120,8 +184,9 @@ class UpdateManager(private val context: Context) {
     }
 
     suspend fun downloadUpdate(info: AppUpdateInfo) = withContext(Dispatchers.IO) {
-        val targetApk = File(updatesDir, "zenvora_v${info.versionName}.apk")
-        val partFile = File(updatesDir, "zenvora_v${info.versionName}.apk.part")
+        val safeAbi = info.matchedAbi.replace("[^a-zA-Z0-9_-]".toRegex(), "")
+        val targetApk = File(updatesDir, "zenvora_v${info.versionName}_${safeAbi}.apk")
+        val partFile = File(updatesDir, "zenvora_v${info.versionName}_${safeAbi}.apk.part")
 
         if (targetApk.exists() && isApkValid(targetApk, info.fileSizeBytes)) {
             _updateState.value = UpdateState.ReadyToInstall(targetApk)
@@ -205,7 +270,14 @@ class UpdateManager(private val context: Context) {
                 PackageManager.GET_SIGNATURES or PackageManager.GET_ACTIVITIES
             }
             val pkg = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, flags) ?: return false
-            pkg.packageName == context.packageName
+            if (pkg.packageName != context.packageName) return false
+            val remoteVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                pkg.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                pkg.versionCode.toLong()
+            }
+            remoteVersionCode > BuildConfig.VERSION_CODE
         } catch (_: Exception) {
             false
         }

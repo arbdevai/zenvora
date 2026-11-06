@@ -139,7 +139,7 @@ fun UpdateDialog(
                         Spacer(modifier = Modifier.height(6.dp))
                         val sizeMb = String.format(Locale.US, "%.1f MB", state.info.fileSizeBytes / (1024f * 1024f))
                         Text(
-                            text = "Ukuran Paket: $sizeMb",
+                            text = "Target ABI: ${state.info.matchedAbi} | Ukuran: $sizeMb",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
