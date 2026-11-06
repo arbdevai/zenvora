@@ -197,7 +197,7 @@ class BrowserSession(
     fun findInPage(query: String) {
         _tabState.update { it.copy(isFindInPageActive = true, findQuery = query) }
         if (query.isNotEmpty()) {
-            geckoSession.finder.find(query, GeckoSession.Finder.FIND_FLAG_NONE)
+            geckoSession.finder.find(query, 0)
         } else {
             geckoSession.finder.clear()
         }
@@ -206,14 +206,14 @@ class BrowserSession(
     fun findNext() {
         val query = _tabState.value.findQuery
         if (query.isNotEmpty()) {
-            geckoSession.finder.find(query, GeckoSession.Finder.FIND_FLAG_NONE)
+            geckoSession.finder.find(query, 0)
         }
     }
 
     fun findPrevious() {
         val query = _tabState.value.findQuery
         if (query.isNotEmpty()) {
-            geckoSession.finder.find(query, GeckoSession.Finder.FIND_FLAG_BACKWARDS)
+            geckoSession.finder.find(query, GeckoSession.FINDER_FIND_BACKWARDS)
         }
     }
 
