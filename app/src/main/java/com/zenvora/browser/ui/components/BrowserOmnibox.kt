@@ -1,10 +1,5 @@
 package com.zenvora.browser.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,7 +23,6 @@ import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.History
@@ -43,6 +37,10 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -58,7 +56,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -111,7 +108,7 @@ fun BrowserOmnibox(
 ) {
     var textFieldValue by remember { mutableStateOf(if (currentUrl == "about:blank") "" else currentUrl) }
     var isFocused by remember { mutableStateOf(false) }
-    var showInlineActionPanel by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
 
     LaunchedEffect(currentUrl) {
@@ -137,10 +134,7 @@ fun BrowserOmnibox(
         ) {
             // Tombol Home ala Chrome Android
             IconButton(
-                onClick = {
-                    showInlineActionPanel = false
-                    onHomeClick()
-                },
+                onClick = onHomeClick,
                 modifier = Modifier.size(38.dp)
             ) {
                 Icon(
@@ -191,10 +185,7 @@ fun BrowserOmnibox(
                     tint = statusTint,
                     modifier = Modifier
                         .size(16.dp)
-                        .clickable {
-                            showInlineActionPanel = false
-                            onSecurityClick()
-                        }
+                        .clickable { onSecurityClick() }
                 )
 
                 Spacer(modifier = Modifier.width(8.dp))
@@ -227,7 +218,6 @@ fun BrowserOmnibox(
                         keyboardActions = KeyboardActions(
                             onGo = {
                                 focusManager.clearFocus()
-                                showInlineActionPanel = false
                                 onNavigate(textFieldValue)
                             }
                         ),
@@ -235,11 +225,8 @@ fun BrowserOmnibox(
                             .fillMaxWidth()
                             .onFocusChanged { focusState ->
                                 isFocused = focusState.isFocused
-                                if (focusState.isFocused) {
-                                    showInlineActionPanel = false
-                                    if (textFieldValue == "about:blank") {
-                                        textFieldValue = ""
-                                    }
+                                if (focusState.isFocused && textFieldValue == "about:blank") {
+                                    textFieldValue = ""
                                 }
                             }
                     )
@@ -258,7 +245,7 @@ fun BrowserOmnibox(
                     Spacer(modifier = Modifier.width(6.dp))
                 }
 
-                // Badge jumlah iklan diblokir (Murni DarkSurfaceVariant + border ElectricOrange, tanpa background oranye)
+                // Badge jumlah iklan diblokir (Murni DarkSurfaceVariant + border ElectricOrange)
                 if (!isFocused && blockedCount > 0 && currentUrl != "about:blank") {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -266,10 +253,7 @@ fun BrowserOmnibox(
                             .clip(RoundedCornerShape(10.dp))
                             .background(DarkSurfaceVariant)
                             .border(1.dp, ElectricOrange, RoundedCornerShape(10.dp))
-                            .clickable {
-                                showInlineActionPanel = false
-                                onSecurityClick()
-                            }
+                            .clickable { onSecurityClick() }
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Icon(
@@ -312,10 +296,7 @@ fun BrowserOmnibox(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .size(38.dp)
-                    .clickable {
-                        showInlineActionPanel = false
-                        onTabsClick()
-                    }
+                    .clickable(onClick = onTabsClick)
             ) {
                 Box(
                     contentAlignment = Alignment.Center,
@@ -336,187 +317,197 @@ fun BrowserOmnibox(
                 }
             }
 
-            // Tombol Panel Kontrol Inline (Bukan Popup/Floating)
-            IconButton(
-                onClick = {
-                    focusManager.clearFocus()
-                    showInlineActionPanel = !showInlineActionPanel
-                },
-                modifier = Modifier.size(38.dp)
-            ) {
-                Icon(
-                    imageVector = if (showInlineActionPanel) Icons.Filled.Close else Icons.Filled.MoreVert,
-                    contentDescription = "Menu Utama",
-                    tint = if (showInlineActionPanel) ElectricOrange else TextPrimary,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-        }
-
-        // Panel Kontrol Inline Non-Floating (Tertanam langsung di bawah Top Bar saat dibuka)
-        AnimatedVisibility(
-            visible = showInlineActionPanel,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(DarkSurface)
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
-            ) {
-                // Baris Status Kecepatan Internet Real-Time & Navigasi Cepat
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(DarkSurfaceContainer)
-                        .border(1.dp, DarkOutline, RoundedCornerShape(8.dp))
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
+            // Menu Titik Tiga (⋮) Standar Google Chrome Android
+            Box {
+                IconButton(
+                    onClick = {
+                        focusManager.clearFocus()
+                        showOverflowMenu = true
+                    },
+                    modifier = Modifier.size(38.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Filled.Speed,
-                            contentDescription = null,
-                            tint = ElectricOrange,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Kecepatan: $networkSpeedText",
-                            style = TextStyle(
-                                color = TextPrimary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = "Menu Utama",
+                        tint = TextPrimary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DropdownMenu(
+                    expanded = showOverflowMenu,
+                    onDismissRequest = { showOverflowMenu = false },
+                    containerColor = DarkSurface,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 8.dp,
+                    modifier = Modifier
+                        .width(260.dp)
+                        .background(DarkSurface)
+                        .border(1.dp, DarkOutline, RoundedCornerShape(12.dp))
+                ) {
+                    // Baris Action Cepat Atas ala Chrome (Maju, Bookmark, Reload, Info Keamanan)
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                    ) {
                         IconButton(
                             onClick = {
-                                showInlineActionPanel = false
+                                showOverflowMenu = false
                                 onForwardClick()
                             },
-                            enabled = canGoForward,
-                            modifier = Modifier.size(28.dp)
+                            enabled = canGoForward
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.ArrowForward,
                                 contentDescription = "Maju",
-                                tint = if (canGoForward) TextPrimary else TextSecondary.copy(alpha = 0.35f),
-                                modifier = Modifier.size(18.dp)
+                                tint = if (canGoForward) TextPrimary else TextSecondary.copy(alpha = 0.35f)
                             )
                         }
 
                         IconButton(
                             onClick = {
-                                showInlineActionPanel = false
+                                showOverflowMenu = false
                                 onBookmarkClick()
-                            },
-                            modifier = Modifier.size(28.dp)
+                            }
                         ) {
                             Icon(
                                 imageVector = if (isBookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
-                                contentDescription = "Bookmark",
-                                tint = if (isBookmarked) ElectricOrange else TextPrimary,
-                                modifier = Modifier.size(18.dp)
+                                contentDescription = "Simpan Bookmark",
+                                tint = if (isBookmarked) ElectricOrange else TextPrimary
                             )
                         }
 
                         IconButton(
                             onClick = {
-                                showInlineActionPanel = false
+                                showOverflowMenu = false
                                 onReload()
-                            },
-                            modifier = Modifier.size(28.dp)
+                            }
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Refresh,
                                 contentDescription = "Muat Ulang",
-                                tint = TextPrimary,
-                                modifier = Modifier.size(18.dp)
+                                tint = TextPrimary
+                            )
+                        }
+
+                        IconButton(
+                            onClick = {
+                                showOverflowMenu = false
+                                onSecurityClick()
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Shield,
+                                contentDescription = "Info Keamanan",
+                                tint = ElectricOrange
                             )
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(color = DarkOutline)
 
-                // Grid 2 Baris Tombol Aksi (Tanpa Popup Mengambang)
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    InlineMenuActionChip(
-                        icon = Icons.Filled.Add,
-                        label = "Tab Baru",
-                        isActive = false,
+                    DropdownMenuItem(
+                        text = { Text("Tab baru", color = TextPrimary) },
+                        leadingIcon = {
+                            Icon(Icons.Filled.Add, contentDescription = null, tint = ElectricOrange)
+                        },
                         onClick = {
-                            showInlineActionPanel = false
+                            showOverflowMenu = false
                             onNewTabClick()
-                        },
-                        modifier = Modifier.weight(1f)
+                        }
                     )
-                    InlineMenuActionChip(
-                        icon = Icons.Filled.VisibilityOff,
-                        label = "Tab Samaran",
-                        isActive = isIncognito,
+
+                    DropdownMenuItem(
+                        text = { Text("Tab Samaran baru", color = TextPrimary) },
+                        leadingIcon = {
+                            Icon(Icons.Filled.VisibilityOff, contentDescription = null, tint = ElectricOrangeLight)
+                        },
                         onClick = {
-                            showInlineActionPanel = false
+                            showOverflowMenu = false
                             onNewIncognitoTabClick()
-                        },
-                        modifier = Modifier.weight(1f)
+                        }
                     )
-                    InlineMenuActionChip(
-                        icon = Icons.Filled.DesktopWindows,
-                        label = if (isDesktopMode) "Desktop: ON" else "Mode Desktop",
-                        isActive = isDesktopMode,
-                        onClick = {
-                            showInlineActionPanel = false
-                            onToggleDesktopMode()
+
+                    HorizontalDivider(color = DarkOutline)
+
+                    DropdownMenuItem(
+                        text = { Text("Histori & Bookmark", color = TextPrimary) },
+                        leadingIcon = {
+                            Icon(Icons.Filled.History, contentDescription = null, tint = TextSecondary)
                         },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    InlineMenuActionChip(
-                        icon = Icons.Filled.History,
-                        label = "Histori & Markah",
-                        isActive = false,
                         onClick = {
-                            showInlineActionPanel = false
+                            showOverflowMenu = false
                             onHistoryClick()
-                        },
-                        modifier = Modifier.weight(1f)
+                        }
                     )
-                    InlineMenuActionChip(
-                        icon = Icons.Filled.FindInPage,
-                        label = "Cari Kata",
-                        isActive = false,
+
+                    DropdownMenuItem(
+                        text = { Text("Cari di halaman", color = TextPrimary) },
+                        leadingIcon = {
+                            Icon(Icons.Filled.FindInPage, contentDescription = null, tint = TextSecondary)
+                        },
                         onClick = {
-                            showInlineActionPanel = false
+                            showOverflowMenu = false
                             onFindInPageClick()
-                        },
-                        modifier = Modifier.weight(1f)
+                        }
                     )
-                    InlineMenuActionChip(
-                        icon = Icons.Filled.Settings,
-                        label = "Setelan",
-                        isActive = false,
-                        onClick = {
-                            showInlineActionPanel = false
-                            onSettingsClick()
+
+                    DropdownMenuItem(
+                        text = { Text("Situs desktop", color = TextPrimary) },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Filled.DesktopWindows,
+                                contentDescription = null,
+                                tint = if (isDesktopMode) ElectricOrange else TextSecondary
+                            )
                         },
-                        modifier = Modifier.weight(1f)
+                        trailingIcon = {
+                            Checkbox(
+                                checked = isDesktopMode,
+                                onCheckedChange = null,
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = ElectricOrange,
+                                    checkmarkColor = OledBlack,
+                                    uncheckedColor = TextSecondary
+                                )
+                            )
+                        },
+                        onClick = {
+                            showOverflowMenu = false
+                            onToggleDesktopMode()
+                        }
+                    )
+
+                    HorizontalDivider(color = DarkOutline)
+
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text("Setelan & Jaringan", color = TextPrimary)
+                                Text(
+                                    text = "Kecepatan: $networkSpeedText",
+                                    style = TextStyle(color = ElectricOrange, fontSize = 11.sp)
+                                )
+                            }
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Filled.Settings, contentDescription = null, tint = ElectricOrange)
+                        },
+                        trailingIcon = {
+                            Icon(
+                                Icons.Filled.Speed,
+                                contentDescription = null,
+                                tint = ElectricOrange,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        onClick = {
+                            showOverflowMenu = false
+                            onSettingsClick()
+                        }
                     )
                 }
             }
@@ -526,49 +517,6 @@ fun BrowserOmnibox(
         HorizontalDivider(
             thickness = 1.dp,
             color = DarkOutline
-        )
-    }
-}
-
-@Composable
-private fun InlineMenuActionChip(
-    icon: ImageVector,
-    label: String,
-    isActive: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
-        modifier = modifier
-            .height(38.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(DarkSurfaceContainer)
-            .border(
-                width = 1.dp,
-                color = if (isActive) ElectricOrange else DarkOutline,
-                shape = RoundedCornerShape(8.dp)
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = if (isActive) ElectricOrange else TextPrimary,
-            modifier = Modifier.size(15.dp)
-        )
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(
-            text = label,
-            style = TextStyle(
-                color = if (isActive) ElectricOrange else TextPrimary,
-                fontSize = 11.sp,
-                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
-            ),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
         )
     }
 }

@@ -13,5 +13,6 @@ data class BrowserTab(
     val isDesktopMode: Boolean = false,
     val isFindInPageActive: Boolean = false,
     val findQuery: String = "",
-    val isIncognito: Boolean = false
+    val isIncognito: Boolean = false,
+    val isFullScreen: Boolean = false
 )

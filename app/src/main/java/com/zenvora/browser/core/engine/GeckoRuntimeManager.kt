@@ -3,11 +3,17 @@ package com.zenvora.browser.core.engine
 import android.app.Application
 import android.content.Context
 import android.os.Build
+import com.zenvora.browser.core.network.DnsProvider
 import org.mozilla.geckoview.ContentBlocking
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
+import java.io.File
 
 object GeckoRuntimeManager {
+    private const val CONFIG_FILE_NAME = "gecko-config.yaml"
+    private const val SHIELD_EXTENSION_URI = "resource://android/assets/addons/zenvora_shield/"
+    private const val SHIELD_EXTENSION_ID = "zenvora-shield@zenvora.browser"
+
     @Volatile
     private var runtime: GeckoRuntime? = null
 
@@ -25,8 +31,66 @@ object GeckoRuntimeManager {
         }
     }
 
+    fun writeGeckoConfigFile(
+        context: Context,
+        dnsProvider: DnsProvider = DnsProvider.CLOUDFLARE,
+        isTurboEnabled: Boolean = true
+    ): File {
+        val configFile = File(context.filesDir, CONFIG_FILE_NAME)
+        val trrMode = if (dnsProvider == DnsProvider.SYSTEM) 0 else 3
+        val trrUri = if (dnsProvider == DnsProvider.SYSTEM) {
+            "https://1.1.1.1/dns-query"
+        } else {
+            dnsProvider.dohEndpoint
+        }
+        val bootstrapIp = if (dnsProvider == DnsProvider.SYSTEM) {
+            "1.1.1.1"
+        } else {
+            dnsProvider.primaryIp
+        }
+        val maxConnections = if (isTurboEnabled) 900 else 256
+        val maxPerServer = if (isTurboEnabled) 12 else 6
+
+        val yamlContent = """
+            prefs:
+              network.trr.mode: $trrMode
+              network.trr.uri: "$trrUri"
+              network.trr.custom_uri: "$trrUri"
+              network.trr.bootstrapAddress: "$bootstrapIp"
+              network.trr.default_provider_uri: "$trrUri"
+              network.trr.wait-for-portal: false
+              network.trr.allow-rfc1918: true
+              network.trr.useGET: true
+              network.trr.confirmationNS: "skip"
+              network.dns.disablePrefetch: false
+              network.dns.disablePrefetchFromHTTPS: false
+              network.dnsCacheEntries: 2048
+              network.dnsCacheExpiration: 3600
+              network.http.http3.enabled: true
+              network.http.max-connections: $maxConnections
+              network.http.max-persistent-connections-per-server: $maxPerServer
+              network.http.pacing.requests.enabled: false
+              network.predictor.enabled: true
+              network.predictor.enable-prefetch: true
+              security.OCSP.enabled: 0
+              dom.disable_open_during_load: true
+              full-screen-api.enabled: true
+              full-screen-api.allow-trusted-requests-only: false
+        """.trimIndent()
+
+        configFile.writeText(yamlContent)
+        return configFile
+    }
+
     private fun createRuntime(context: Context): GeckoRuntime {
+        val prefsFile = writeGeckoConfigFile(
+            context = context,
+            dnsProvider = DnsProvider.CLOUDFLARE,
+            isTurboEnabled = true
+        )
+
         val settings = GeckoRuntimeSettings.Builder()
+            .configFilePath(prefsFile.absolutePath)
             .aboutConfigEnabled(false)
             .automaticFontSizeAdjustment(true)
             .consoleOutput(false)
@@ -38,12 +102,25 @@ object GeckoRuntimeManager {
                             ContentBlocking.AntiTracking.FINGERPRINTING or
                             ContentBlocking.AntiTracking.CRYPTOMINING
                     )
+                    .safeBrowsing(ContentBlocking.SafeBrowsing.DEFAULT)
                     .cookieBehavior(ContentBlocking.CookieBehavior.ACCEPT_NON_TRACKERS)
                     .enhancedTrackingProtectionLevel(ContentBlocking.EtpLevel.STRICT)
                     .build()
             )
             .build()
 
-        return GeckoRuntime.create(context, settings)
+        val createdRuntime = GeckoRuntime.create(context, settings)
+
+        // Pasang Built-In Stealth Adblock & Anti-Adblock Defuser WebExtension
+        try {
+            createdRuntime.webExtensionController.ensureBuiltIn(
+                SHIELD_EXTENSION_URI,
+                SHIELD_EXTENSION_ID
+            )
+        } catch (_: Exception) {
+            // Abaikan jika gagal memuat ekstensi pada mode terbatas
+        }
+
+        return createdRuntime
     }
 }

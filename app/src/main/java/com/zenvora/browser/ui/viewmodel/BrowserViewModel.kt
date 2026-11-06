@@ -85,13 +85,22 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     init {
         networkSpeedManager.startMonitoring(viewModelScope)
         viewModelScope.launch {
+            preferencesRepository.isAdblockEnabled.collect { enabled ->
+                sessionsMap.values.forEach { it.adblockEnabled = enabled }
+            }
+        }
+        viewModelScope.launch {
             preferencesRepository.isNetworkTurboEnabled.collect { enabled ->
                 networkSpeedManager.setTurboEnabled(enabled)
+                val provider = DnsProvider.fromId(dnsProviderId.value)
+                GeckoRuntimeManager.writeGeckoConfigFile(context, provider, enabled)
             }
         }
         viewModelScope.launch {
             preferencesRepository.dnsProviderId.collect { id ->
-                networkSpeedManager.setDnsProvider(DnsProvider.fromId(id))
+                val provider = DnsProvider.fromId(id)
+                networkSpeedManager.setDnsProvider(provider)
+                GeckoRuntimeManager.writeGeckoConfigFile(context, provider, isNetworkTurboEnabled.value)
             }
         }
         createNewTab("about:blank")
@@ -108,6 +117,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     fun createNewTab(initialUrl: String = "about:blank", isIncognito: Boolean = false) {
         val tabId = UUID.randomUUID().toString()
         val session = BrowserSession(tabId, isIncognito = isIncognito)
+        session.adblockEnabled = isAdblockEnabled.value
         session.initSession(context, runtime)
         sessionsMap[tabId] = session
 
@@ -178,13 +188,15 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun navigateHome() {
+        getActiveSession()?.exitFullScreen()
         getActiveSession()?.loadUri("about:blank")
         _activeTabState.update {
             it.copy(
                 url = "about:blank",
                 title = if (it.isIncognito) "Tab Samaran" else "Tab Baru",
                 isLoading = false,
-                progress = 100
+                progress = 100,
+                isFullScreen = false
             )
         }
     }
@@ -226,6 +238,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         getActiveSession()?.reload()
     }
 
+    fun exitFullScreen() {
+        getActiveSession()?.exitFullScreen()
+    }
+
     fun toggleDesktopMode() {
         val current = _activeTabState.value.isDesktopMode
         getActiveSession()?.setDesktopMode(!current)
@@ -254,8 +270,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun toggleAdblock() {
         viewModelScope.launch {
-            val current = isAdblockEnabled.value
-            preferencesRepository.setAdblockEnabled(!current)
+            val next = !isAdblockEnabled.value
+            preferencesRepository.setAdblockEnabled(next)
+            sessionsMap.values.forEach { it.adblockEnabled = next }
         }
     }
 
@@ -271,6 +288,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             val next = !isNetworkTurboEnabled.value
             preferencesRepository.setNetworkTurboEnabled(next)
             networkSpeedManager.setTurboEnabled(next)
+            val provider = DnsProvider.fromId(dnsProviderId.value)
+            GeckoRuntimeManager.writeGeckoConfigFile(context, provider, next)
             if (next) {
                 networkSpeedManager.warmupAndMeasureLatency(_activeTabState.value.url)
             }
@@ -281,6 +300,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             preferencesRepository.setDnsProviderId(provider.id)
             networkSpeedManager.setDnsProvider(provider)
+            GeckoRuntimeManager.writeGeckoConfigFile(context, provider, isNetworkTurboEnabled.value)
             networkSpeedManager.warmupAndMeasureLatency(_activeTabState.value.url)
         }
     }

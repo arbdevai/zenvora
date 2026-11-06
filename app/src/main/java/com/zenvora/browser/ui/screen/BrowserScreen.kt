@@ -1,12 +1,18 @@
 package com.zenvora.browser.ui.screen
 
+import android.app.Activity
+import android.content.pm.ActivityInfo
+import android.os.Build
+import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -20,13 +26,18 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zenvora.browser.core.updater.UpdateState
 import com.zenvora.browser.ui.components.BrowserGeckoView
@@ -68,6 +79,7 @@ fun BrowserScreen(
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
 
     var currentPage by remember { mutableStateOf(ActiveFullScreenPage.BROWSER) }
+    var isToolbarVisible by remember { mutableStateOf(true) }
 
     val isBookmarked = remember(bookmarks, activeTabState.url) {
         bookmarks.any { it.url == activeTabState.url }
@@ -75,15 +87,48 @@ fun BrowserScreen(
 
     val isOnNewTabPage = activeTabState.url == "about:blank" || activeTabState.url.isEmpty()
 
-    // Penanganan tombol kembali Android untuk halaman penuh & riwayat web
+    // Tampilkan kembali toolbar saat berpindah URL atau kembali ke beranda
+    LaunchedEffect(activeTabState.url, activeTabId) {
+        isToolbarVisible = true
+    }
+
+    // Mode Immersive Penuh untuk Video Streaming Fullscreen pada Layar HP Besar
+    val view = LocalView.current
+    LaunchedEffect(activeTabState.isFullScreen) {
+        val activity = view.context as? Activity ?: return@LaunchedEffect
+        val window = activity.window
+        val insetsController = WindowCompat.getInsetsController(window, view)
+
+        if (activeTabState.isFullScreen) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                window.attributes = window.attributes.apply {
+                    layoutInDisplayCutoutMode =
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+            }
+            insetsController.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            insetsController.hide(WindowInsetsCompat.Type.systemBars())
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            insetsController.show(WindowInsetsCompat.Type.systemBars())
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
+
+    // Penanganan tombol kembali Android (termasuk keluar dari Video Fullscreen)
     BackHandler(
-        enabled = updateState !is UpdateState.Idle ||
+        enabled = activeTabState.isFullScreen ||
+            updateState !is UpdateState.Idle ||
             currentPage != ActiveFullScreenPage.BROWSER ||
             activeTabState.isFindInPageActive ||
             activeTabState.canGoBack ||
             !isOnNewTabPage
     ) {
         when {
+            activeTabState.isFullScreen -> viewModel.exitFullScreen()
             updateState !is UpdateState.Idle -> viewModel.dismissUpdate()
             currentPage != ActiveFullScreenPage.BROWSER -> currentPage = ActiveFullScreenPage.BROWSER
             activeTabState.isFindInPageActive -> viewModel.closeFindInPage()
@@ -92,17 +137,17 @@ fun BrowserScreen(
         }
     }
 
-    // Gunakan WindowInsets.systemBars pada Scaffold, sementara imePadding berada di dalam
-    // kontainer form scrollable (ChromeNewTabPage) sesuai standar ui_ux_system.md
     Scaffold(
-        contentWindowInsets = WindowInsets.systemBars,
+        contentWindowInsets = if (activeTabState.isFullScreen) WindowInsets(0, 0, 0, 0) else WindowInsets.systemBars,
         containerColor = OledBlack,
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .let { base ->
+                    if (activeTabState.isFullScreen) base else base.padding(innerPadding)
+                }
                 .background(OledBlack)
         ) {
             if (updateState !is UpdateState.Idle) {
@@ -201,38 +246,44 @@ fun BrowserScreen(
                                     .fillMaxSize()
                                     .background(OledBlack)
                             ) {
-                                // 1. Top Toolbar ala Google Chrome Android
-                                BrowserOmnibox(
-                                    currentUrl = activeTabState.url,
-                                    isLoading = activeTabState.isLoading,
-                                    canGoForward = activeTabState.canGoForward,
-                                    isDesktopMode = activeTabState.isDesktopMode,
-                                    securityInfo = securityInfo,
-                                    blockedCount = activeTabState.blockedRequestsCount,
-                                    tabsCount = tabs.size,
-                                    isBookmarked = isBookmarked,
-                                    networkSpeedText = networkStats.formattedDownloadSpeed,
-                                    isIncognito = activeTabState.isIncognito,
-                                    onNavigate = { viewModel.loadInput(it) },
-                                    onHomeClick = { viewModel.navigateHome() },
-                                    onReload = { viewModel.reload() },
-                                    onForwardClick = { viewModel.goForward() },
-                                    onNewTabClick = { viewModel.createNewTab(isIncognito = false) },
-                                    onNewIncognitoTabClick = { viewModel.createNewTab(isIncognito = true) },
-                                    onFindInPageClick = { viewModel.startFindInPage() },
-                                    onToggleDesktopMode = { viewModel.toggleDesktopMode() },
-                                    onSecurityClick = { currentPage = ActiveFullScreenPage.SECURITY },
-                                    onTabsClick = { currentPage = ActiveFullScreenPage.TABS },
-                                    onBookmarkClick = {
-                                        viewModel.toggleBookmark(activeTabState.url, activeTabState.title)
-                                    },
-                                    onHistoryClick = { currentPage = ActiveFullScreenPage.HISTORY_BOOKMARKS },
-                                    onSettingsClick = { currentPage = ActiveFullScreenPage.SETTINGS }
-                                )
-
-                                // 2. Indikator Progres Loading Electric Orange Tepat di Bawah Address Bar
+                                // 1. Top Toolbar ala Google Chrome Android (Otomatis sembunyi saat scroll ke bawah atau saat Video Fullscreen)
                                 AnimatedVisibility(
-                                    visible = activeTabState.isLoading,
+                                    visible = !activeTabState.isFullScreen && (isToolbarVisible || isOnNewTabPage),
+                                    enter = slideInVertically { height -> -height } + fadeIn(),
+                                    exit = slideOutVertically { height -> -height } + fadeOut()
+                                ) {
+                                    BrowserOmnibox(
+                                        currentUrl = activeTabState.url,
+                                        isLoading = activeTabState.isLoading,
+                                        canGoForward = activeTabState.canGoForward,
+                                        isDesktopMode = activeTabState.isDesktopMode,
+                                        securityInfo = securityInfo,
+                                        blockedCount = activeTabState.blockedRequestsCount,
+                                        tabsCount = tabs.size,
+                                        isBookmarked = isBookmarked,
+                                        networkSpeedText = networkStats.formattedDownloadSpeed,
+                                        isIncognito = activeTabState.isIncognito,
+                                        onNavigate = { viewModel.loadInput(it) },
+                                        onHomeClick = { viewModel.navigateHome() },
+                                        onReload = { viewModel.reload() },
+                                        onForwardClick = { viewModel.goForward() },
+                                        onNewTabClick = { viewModel.createNewTab(isIncognito = false) },
+                                        onNewIncognitoTabClick = { viewModel.createNewTab(isIncognito = true) },
+                                        onFindInPageClick = { viewModel.startFindInPage() },
+                                        onToggleDesktopMode = { viewModel.toggleDesktopMode() },
+                                        onSecurityClick = { currentPage = ActiveFullScreenPage.SECURITY },
+                                        onTabsClick = { currentPage = ActiveFullScreenPage.TABS },
+                                        onBookmarkClick = {
+                                            viewModel.toggleBookmark(activeTabState.url, activeTabState.title)
+                                        },
+                                        onHistoryClick = { currentPage = ActiveFullScreenPage.HISTORY_BOOKMARKS },
+                                        onSettingsClick = { currentPage = ActiveFullScreenPage.SETTINGS }
+                                    )
+                                }
+
+                                // 2. Indikator Progres Loading Electric Orange
+                                AnimatedVisibility(
+                                    visible = activeTabState.isLoading && !activeTabState.isFullScreen,
                                     enter = fadeIn(),
                                     exit = fadeOut()
                                 ) {
@@ -246,8 +297,8 @@ fun BrowserScreen(
                                     )
                                 }
 
-                                // 3. Find in Page Bar (jika aktif)
-                                if (activeTabState.isFindInPageActive) {
+                                // 3. Find in Page Bar (jika aktif dan tidak sedang video fullscreen)
+                                if (activeTabState.isFindInPageActive && !activeTabState.isFullScreen) {
                                     FindInPageBar(
                                         query = activeTabState.findQuery,
                                         onQueryChange = { viewModel.findInPage(it) },
@@ -280,6 +331,16 @@ fun BrowserScreen(
                                     } else {
                                         BrowserGeckoView(
                                             activeSession = viewModel.getActiveSession(),
+                                            onScrollDown = {
+                                                if (isToolbarVisible) {
+                                                    isToolbarVisible = false
+                                                }
+                                            },
+                                            onScrollUp = {
+                                                if (!isToolbarVisible) {
+                                                    isToolbarVisible = true
+                                                }
+                                            },
                                             modifier = Modifier.fillMaxSize()
                                         )
                                     }

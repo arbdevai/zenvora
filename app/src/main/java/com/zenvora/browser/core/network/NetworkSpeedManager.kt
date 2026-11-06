@@ -18,6 +18,7 @@ import okhttp3.ConnectionPool
 import okhttp3.Dispatcher
 import okhttp3.Dns
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
@@ -35,31 +36,31 @@ enum class DnsProvider(
 ) {
     CLOUDFLARE(
         id = "cloudflare",
-        displayName = "Cloudflare Warp DNS (1.1.1.1)",
+        displayName = "Cloudflare DoH (1.1.1.1)",
         primaryIp = "1.1.1.1",
-        dohEndpoint = "https://cloudflare-dns.com/dns-query",
-        description = "Resolusi DNS tercepat dengan latensi ultra-rendah"
+        dohEndpoint = "https://1.1.1.1/dns-query",
+        description = "Strict DNS-over-HTTPS terenkripsi bebas blokir DNS ISP/HP"
     ),
     GOOGLE(
         id = "google",
-        displayName = "Google High-Speed DNS (8.8.8.8)",
+        displayName = "Google DoH (8.8.8.8)",
         primaryIp = "8.8.8.8",
-        dohEndpoint = "https://dns.google/dns-query",
-        description = "Infrastruktur global stabil dengan throughput tinggi"
+        dohEndpoint = "https://8.8.8.8/dns-query",
+        description = "Strict DNS-over-HTTPS global berkecepatan tinggi"
     ),
     QUAD9(
         id = "quad9",
-        displayName = "Quad9 Secure DNS (9.9.9.9)",
+        displayName = "Quad9 Secure DoH (9.9.9.9)",
         primaryIp = "9.9.9.9",
-        dohEndpoint = "https://dns.quad9.net/dns-query",
-        description = "DNS cepat dengan proteksi domain berbahaya"
+        dohEndpoint = "https://9.9.9.9:5053/dns-query",
+        description = "DNS-over-HTTPS dengan pemblokiran malware & phishing"
     ),
     SYSTEM(
         id = "system",
-        displayName = "DNS Standar Jaringan",
+        displayName = "DNS Standar Jaringan HP",
         primaryIp = "Auto",
         dohEndpoint = "",
-        description = "Gunakan resolver bawaan operator seluler atau Wi-Fi"
+        description = "Menggunakan resolver bawaan sistem Android / operator"
     );
 
     companion object {
@@ -121,12 +122,69 @@ class NetworkSpeedManager {
 
     private var monitorJob: Job? = null
 
+    // Bootstrap client murni berbasis IP langsung (tidak bergantung pada DNS HP)
+    private val dohBootstrapClient = OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .build()
+
+    private val ipRegex = Regex("\"data\"\\s*:\\s*\"(\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})\"")
+    private val directIpv4Regex = Regex("^\\d{1,3}(\\.\\d{1,3}){3}$")
+
+    private fun resolveViaEncryptedDoh(hostname: String): List<InetAddress> {
+        // Jika sudah berbentuk IPv4 langsung, tidak perlu query DNS
+        if (directIpv4Regex.matches(hostname)) {
+            val parts = hostname.split(".").map { it.toInt().toByte() }.toByteArray()
+            return listOf(InetAddress.getByAddress(hostname, parts))
+        }
+
+        val provider = _networkStats.value.dnsProvider
+        val dohQueryUrl = when (provider) {
+            DnsProvider.GOOGLE -> "https://8.8.8.8/resolve?name=$hostname&type=A"
+            else -> "https://1.1.1.1/dns-query?name=$hostname&type=A"
+        }
+
+        return try {
+            val req = Request.Builder()
+                .url(dohQueryUrl)
+                .header("Accept", "application/dns-json")
+                .build()
+            dohBootstrapClient.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return emptyList()
+                val bodyStr = resp.body?.string().orEmpty()
+                val addresses = ipRegex.findAll(bodyStr).mapNotNull { matchResult ->
+                    val ipStr = matchResult.groupValues[1]
+                    try {
+                        val octets = ipStr.split(".").map { octet -> octet.toInt().toByte() }.toByteArray()
+                        InetAddress.getByAddress(hostname, octets)
+                    } catch (_: Exception) {
+                        null
+                    }
+                }.toList()
+                addresses
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
     private val fastDns = object : Dns {
         override fun lookup(hostname: String): List<InetAddress> {
             val cached = dnsCache[hostname]
             if (!cached.isNullOrEmpty()) {
                 return cached
             }
+
+            val provider = _networkStats.value.dnsProvider
+            if (provider != DnsProvider.SYSTEM) {
+                val dohResult = resolveViaEncryptedDoh(hostname)
+                if (dohResult.isNotEmpty()) {
+                    dnsCache[hostname] = dohResult
+                    _networkStats.update { it.copy(cachedDomainsCount = dnsCache.size) }
+                    return dohResult
+                }
+            }
+
             val resolved = Dns.SYSTEM.lookup(hostname)
             if (resolved.isNotEmpty()) {
                 dnsCache[hostname] = resolved
@@ -163,7 +221,6 @@ class NetworkSpeedManager {
             val baseTx = prevTx
             var prevTime = SystemClock.elapsedRealtime()
 
-            // Warmup awal ke DNS utama
             warmupDefaultDomains()
 
             while (isActive) {
@@ -227,21 +284,28 @@ class NetworkSpeedManager {
     suspend fun warmupAndMeasureLatency(targetUrl: String? = null) = withContext(Dispatchers.IO) {
         try {
             val provider = _networkStats.value.dnsProvider
-            val hostToPing = when {
-                !targetUrl.isNullOrBlank() && targetUrl != "about:blank" -> {
-                    runCatching { URI(targetUrl).host }.getOrNull() ?: "1.1.1.1"
+            val directIp = if (provider != DnsProvider.SYSTEM) provider.primaryIp else "1.1.1.1"
+
+            // Pre-resolve domain melalui DoH terenkripsi jika ada targetUrl
+            if (!targetUrl.isNullOrBlank() && targetUrl.startsWith("http")) {
+                val parsedHost = try {
+                    URI(targetUrl).host
+                } catch (_: Exception) {
+                    null
                 }
-                provider != DnsProvider.SYSTEM -> provider.primaryIp
-                else -> "1.1.1.1"
+                if (!parsedHost.isNullOrBlank()) {
+                    try {
+                        fastDns.lookup(parsedHost)
+                    } catch (_: Exception) {
+                        // Abaikan kegagalan pre-resolve
+                    }
+                }
             }
 
-            // Pre-resolve DNS ke dalam in-memory cache
-            val addresses = fastDns.lookup(hostToPing)
-            val targetAddress = addresses.firstOrNull() ?: InetAddress.getByName("1.1.1.1")
-
+            // Ukur ping langsung ke IP bootstrap DoH port 443 tanpa lewat DNS HP
             val startMs = SystemClock.elapsedRealtime()
             Socket().use { socket ->
-                socket.connect(InetSocketAddress(targetAddress, 443), 2500)
+                socket.connect(InetSocketAddress(directIp, 443), 2500)
             }
             val rtt = (SystemClock.elapsedRealtime() - startMs).coerceAtLeast(1L)
 
@@ -252,17 +316,7 @@ class NetworkSpeedManager {
                 )
             }
         } catch (_: Exception) {
-            // Fallback ke DNS IP langsung jika port 443 host tujuan tertutup
-            try {
-                val startMs = SystemClock.elapsedRealtime()
-                Socket().use { socket ->
-                    socket.connect(InetSocketAddress("1.1.1.1", 53), 2000)
-                }
-                val rtt = (SystemClock.elapsedRealtime() - startMs).coerceAtLeast(1L)
-                _networkStats.update { it.copy(latencyMs = rtt) }
-            } catch (_: Exception) {
-                // Abaikan jika perangkat sedang offline
-            }
+            // Abaikan jika perangkat sedang offline
         }
     }
 
@@ -271,8 +325,7 @@ class NetworkSpeedManager {
             "www.google.com",
             "duckduckgo.com",
             "www.youtube.com",
-            "github.com",
-            "cloudflare-dns.com"
+            "github.com"
         )
         popularHosts.forEach { host ->
             runCatching { fastDns.lookup(host) }

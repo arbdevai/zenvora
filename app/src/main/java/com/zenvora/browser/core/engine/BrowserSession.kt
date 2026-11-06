@@ -1,6 +1,7 @@
 package com.zenvora.browser.core.engine
 
 import android.content.Context
+import com.zenvora.browser.core.adblock.AdblockEngine
 import com.zenvora.browser.data.model.BrowserTab
 import com.zenvora.browser.data.model.SecurityInfo
 import com.zenvora.browser.data.model.SecurityStatus
@@ -30,6 +31,7 @@ class BrowserSession(
                 .usePrivateMode(isIncognito)
                 .userAgentMode(GeckoSessionSettings.USER_AGENT_MODE_MOBILE)
                 .viewportMode(GeckoSessionSettings.VIEWPORT_MODE_MOBILE)
+                .fullAccessibilityTree(false)
                 .build()
             return GeckoSession(settings)
         }
@@ -50,6 +52,7 @@ class BrowserSession(
 
     private var isOpen = false
     private var desktopModeEnabled = false
+    var adblockEnabled = true
 
     fun initSession(context: Context, runtime: GeckoRuntime) {
         if (!isOpen) {
@@ -156,6 +159,26 @@ class BrowserSession(
             ): GeckoResult<AllowOrDeny> {
                 applyDesktopSettings(desktopModeEnabled)
                 val targetUri = request.uri
+
+                // 1. Blokir permintaan / redirect ke domain iklan & pop-under via Native Rust AdblockEngine
+                if (adblockEnabled && targetUri.startsWith("http") && AdblockEngine.isUrlBlocked(targetUri)) {
+                    _tabState.update {
+                        it.copy(blockedRequestsCount = it.blockedRequestsCount + 1)
+                    }
+                    return GeckoResult.fromValue(AllowOrDeny.DENY)
+                }
+
+                // 2. Blokir pembukaan tab pop-under paksa (TARGET_WINDOW_NEW) dari script situs streaming
+                if (adblockEnabled && request.target == GeckoSession.NavigationDelegate.TARGET_WINDOW_NEW) {
+                    if (!request.hasUserGesture || AdblockEngine.isUrlBlocked(targetUri)) {
+                        _tabState.update {
+                            it.copy(blockedRequestsCount = it.blockedRequestsCount + 1)
+                        }
+                        return GeckoResult.fromValue(AllowOrDeny.DENY)
+                    }
+                }
+
+                // 3. Pertahankan Mode Desktop dengan mengubah subdomain mobile (m.) ke desktop (www.)
                 if (desktopModeEnabled && targetUri.startsWith("http")) {
                     val desktopUri = rewriteMobileUrlForDesktop(targetUri)
                     if (desktopUri != targetUri) {
@@ -164,6 +187,19 @@ class BrowserSession(
                     }
                 }
                 return GeckoResult.fromValue(AllowOrDeny.ALLOW)
+            }
+
+            override fun onNewSession(
+                session: GeckoSession,
+                uri: String
+            ): GeckoResult<GeckoSession> {
+                // Blokir pop-up / pop-under window baru yang sering muncul saat klik video streaming
+                if (adblockEnabled) {
+                    _tabState.update {
+                        it.copy(blockedRequestsCount = it.blockedRequestsCount + 1)
+                    }
+                }
+                return GeckoResult.fromValue(null)
             }
 
             override fun onLocationChange(
@@ -197,6 +233,10 @@ class BrowserSession(
                 if (cleanTitle.isNotEmpty()) {
                     _tabState.update { it.copy(title = cleanTitle) }
                 }
+            }
+
+            override fun onFullScreen(session: GeckoSession, fullScreen: Boolean) {
+                _tabState.update { it.copy(isFullScreen = fullScreen) }
             }
         }
 
@@ -268,6 +308,11 @@ class BrowserSession(
     fun reload() {
         applyDesktopSettings(desktopModeEnabled)
         geckoSession.reload(GeckoSession.LOAD_FLAGS_BYPASS_CACHE)
+    }
+
+    fun exitFullScreen() {
+        geckoSession.exitFullScreen()
+        _tabState.update { it.copy(isFullScreen = false) }
     }
 
     fun setDesktopMode(enabled: Boolean) {
