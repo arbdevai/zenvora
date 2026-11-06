@@ -25,7 +25,6 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.FindInPage
-import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
@@ -36,6 +35,7 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Checkbox
@@ -91,6 +91,7 @@ fun BrowserOmnibox(
     tabsCount: Int,
     isBookmarked: Boolean,
     networkSpeedText: String,
+    availableUpdateVersion: String? = null,
     isIncognito: Boolean = false,
     onNavigate: (String) -> Unit,
     onHomeClick: () -> Unit,
@@ -100,7 +101,7 @@ fun BrowserOmnibox(
     onNewIncognitoTabClick: () -> Unit,
     onFindInPageClick: () -> Unit,
     onToggleDesktopMode: () -> Unit,
-    onEnterVideoFullScreen: () -> Unit,
+    onCheckUpdateClick: () -> Unit,
     onSecurityClick: () -> Unit,
     onTabsClick: () -> Unit,
     onBookmarkClick: () -> Unit,
@@ -314,7 +315,7 @@ fun BrowserOmnibox(
                 }
             }
 
-            // Menu Titik Tiga (⋮) Standar Google Chrome Android
+            // Menu Titik Tiga (⋮) Standar Google Chrome Android + Badge Deteksi Otomatis Update
             Box {
                 IconButton(
                     onClick = {
@@ -323,12 +324,23 @@ fun BrowserOmnibox(
                     },
                     modifier = Modifier.size(38.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.MoreVert,
-                        contentDescription = "Menu Utama",
-                        tint = TextPrimary,
-                        modifier = Modifier.size(22.dp)
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = "Menu Utama",
+                            tint = if (availableUpdateVersion != null) ElectricOrange else TextPrimary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        if (availableUpdateVersion != null) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(7.dp)
+                                    .clip(RoundedCornerShape(3.5.dp))
+                                    .background(ElectricOrange)
+                            )
+                        }
+                    }
                 }
 
                 DropdownMenu(
@@ -452,25 +464,6 @@ fun BrowserOmnibox(
                     )
 
                     DropdownMenuItem(
-                        text = {
-                            Column {
-                                Text("Layar Penuh Video (20:9)", color = TextPrimary)
-                                Text(
-                                    text = "Mode Pas Layar Redmi 9C",
-                                    style = TextStyle(color = ElectricOrange, fontSize = 11.sp)
-                                )
-                            }
-                        },
-                        leadingIcon = {
-                            Icon(Icons.Filled.Fullscreen, contentDescription = null, tint = ElectricOrange)
-                        },
-                        onClick = {
-                            showOverflowMenu = false
-                            onEnterVideoFullScreen()
-                        }
-                    )
-
-                    DropdownMenuItem(
                         text = { Text("Situs desktop", color = TextPrimary) },
                         leadingIcon = {
                             Icon(
@@ -497,6 +490,41 @@ fun BrowserOmnibox(
                     )
 
                     HorizontalDivider(color = DarkOutline)
+
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(
+                                    text = if (availableUpdateVersion != null) {
+                                        "Update Tersedia (v$availableUpdateVersion)"
+                                    } else {
+                                        "Periksa Update Zenvora"
+                                    },
+                                    color = if (availableUpdateVersion != null) ElectricOrange else TextPrimary,
+                                    fontWeight = if (availableUpdateVersion != null) FontWeight.Bold else FontWeight.Normal
+                                )
+                                Text(
+                                    text = if (availableUpdateVersion != null) {
+                                        "Ketuk untuk unduh & pasang sekarang"
+                                    } else {
+                                        "Deteksi otomatis rilis terbaru GitHub"
+                                    },
+                                    style = TextStyle(color = TextSecondary, fontSize = 11.sp)
+                                )
+                            }
+                        },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Filled.SystemUpdate,
+                                contentDescription = null,
+                                tint = if (availableUpdateVersion != null) ElectricOrange else TextSecondary
+                            )
+                        },
+                        onClick = {
+                            showOverflowMenu = false
+                            onCheckUpdateClick()
+                        }
+                    )
 
                     DropdownMenuItem(
                         text = {

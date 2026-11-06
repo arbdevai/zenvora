@@ -5,7 +5,7 @@
   // - Anti-Adblock Defuser
   // - YouTube & Web Background Play Unlocker (Page Visibility Spoofer)
   // - Pop-Under & Click-Hijack Blocker
-  // - Universal Video Fullscreen Engine Bridge (JWPlayer, Video.js, Plyr, Clappr, Custom Iframe Players)
+  // - Clean Video Fullscreen Controller (Tanpa Merusak UI/Elemen YouTube atau Membuat Blank Saat Exit)
   const defuserCode = `
     (function() {
       try {
@@ -79,57 +79,27 @@
           return origAddEventListener.call(this, type, listener, options);
         };
 
-        // E. Universal Fullscreen Video Engine Fixer
-        // Jika web player (JWPlayer, Video.js, Plyr, custom player) memanggil requestFullscreen pada div container,
-        // pastikan elemen tersebut dan <video> di dalamnya dipaksa memenuhi 100vw x 100vh layar HP.
-        const origRequestFullscreen = Element.prototype.requestFullscreen || Element.prototype.webkitRequestFullscreen || Element.prototype.mozRequestFullScreen;
-        if (origRequestFullscreen) {
-          const patchedFullscreen = function(options) {
+        // E. Hanya bantu tombol fullscreen player pihak ketiga jika BUKAN YouTube dan API fullscreen gagal dipicu
+        const isYouTubeHost = location.hostname.includes('youtube.com') || location.hostname.includes('youtu.be');
+        if (!isYouTubeHost) {
+          const origReqFs = Element.prototype.requestFullscreen || Element.prototype.webkitRequestFullscreen || Element.prototype.mozRequestFullScreen;
+          document.addEventListener('click', function(e) {
             try {
-              this.classList.add('zenvora-forced-fullscreen-container');
-              const innerVideo = this.tagName === 'VIDEO' ? this : this.querySelector('video');
-              if (innerVideo) {
-                innerVideo.classList.add('zenvora-forced-fullscreen-video');
-              }
-            } catch (_) {}
-            return origRequestFullscreen.call(this, options);
-          };
-          Element.prototype.requestFullscreen = patchedFullscreen;
-          Element.prototype.webkitRequestFullscreen = patchedFullscreen;
-          Element.prototype.mozRequestFullScreen = patchedFullscreen;
-        }
-
-        // Tangkap juga klik pada tombol fullscreen custom yang hanya mengubah CSS / indikator tanpa memanggil API native
-        document.addEventListener('click', function(e) {
-          try {
-            const target = e.target ? e.target.closest('button, [role="button"], .jw-icon-fullscreen, .vjs-fullscreen-control, .plyr__control--overlaid, [class*="fullscreen"], [aria-label*="Full screen"], [aria-label*="Fullscreen"], [title*="Fullscreen"], [title*="Full screen"]') : null;
-            if (!target) return;
-            const classAndTitle = ((target.className || '') + ' ' + (target.getAttribute('aria-label') || '') + ' ' + (target.getAttribute('title') || '')).toLowerCase();
-            if (!classAndTitle.includes('fullscreen') && !classAndTitle.includes('full screen') && !classAndTitle.includes('layar penuh')) return;
-
-            setTimeout(function() {
-              if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.mozFullScreenElement) {
-                const videos = document.querySelectorAll('video');
-                let activeVideo = null;
-                for (let i = 0; i < videos.length; i++) {
-                  if (!videos[i].paused || videos[i].readyState >= 2) {
-                    activeVideo = videos[i];
-                    break;
+              const target = e.target ? e.target.closest('.jw-icon-fullscreen, .vjs-fullscreen-control, .plyr__control[data-plyr="fullscreen"], [aria-label*="Fullscreen"], [title*="Fullscreen"]') : null;
+              if (!target || !origReqFs) return;
+              setTimeout(function() {
+                if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.mozFullScreenElement) {
+                  const playerContainer = target.closest('.jwplayer, .video-js, .plyr, [class*="player"]');
+                  const videoEl = playerContainer ? playerContainer.querySelector('video') : document.querySelector('video');
+                  const fsTarget = playerContainer || videoEl;
+                  if (fsTarget) {
+                    origReqFs.call(fsTarget).catch(function() {});
                   }
                 }
-                if (!activeVideo && videos.length > 0) activeVideo = videos[0];
-                if (activeVideo && origRequestFullscreen) {
-                  const playerWrapper = activeVideo.closest('.jwplayer, .video-js, .plyr, .html5-video-player, [class*="player"]') || activeVideo;
-                  playerWrapper.classList.add('zenvora-forced-fullscreen-container');
-                  activeVideo.classList.add('zenvora-forced-fullscreen-video');
-                  origRequestFullscreen.call(playerWrapper).catch(function() {
-                    origRequestFullscreen.call(activeVideo).catch(function() {});
-                  });
-                }
-              }
-            }, 120);
-          } catch (_) {}
-        }, true);
+              }, 150);
+            } catch (_) {}
+          }, true);
+        }
       } catch (_) {}
     })();
   `;
@@ -141,7 +111,7 @@
     script.remove();
   } catch (_) {}
 
-  // 2. Suntikkan Cosmetic CSS (WordPress Ad Plugins, Indo-Streaming Banners & Universal Fullscreen Video Rules)
+  // 2. Suntikkan Cosmetic CSS (WordPress Ad Plugins & Indo-Streaming Banners, Tanpa Mengganggu Layout Video / UI YouTube)
   const injectCosmeticStyle = () => {
     if (document.getElementById("zenvora-stealth-css")) return;
     const style = document.createElement("style");
@@ -171,8 +141,6 @@
       div[class*="banner_ad"],
       div[class*="iklan"],
       div[id*="iklan"],
-      div[class*="kln"],
-      div[id*="kln"],
       div[class*="blox-kln"],
       div[class*="pasang-iklan"],
       div[class*="ads-banner"],
@@ -218,40 +186,11 @@
         overflow: hidden !important;
       }
 
-      /* Kompatibilitas penuh untuk semua engine pemutar video di web streaming saat Fullscreen */
-      :fullscreen,
-      :-webkit-full-screen,
-      :-moz-full-screen,
-      .zenvora-forced-fullscreen-container:fullscreen,
-      .zenvora-forced-fullscreen-container:-moz-full-screen {
-        position: fixed !important;
-        inset: 0px !important;
-        top: 0px !important;
-        left: 0px !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        max-width: 100vw !important;
-        max-height: 100vh !important;
-        margin: 0px !important;
-        padding: 0px !important;
-        background: #000 !important;
-        z-index: 2147483647 !important;
-      }
-
+      /* Hanya berlaku saat elemen <video> langsung yang diputar fullscreen tanpa kontainer player */
       video:fullscreen,
-      video:-moz-full-screen,
-      *:fullscreen video,
-      *:-moz-full-screen video,
-      *:fullscreen iframe,
-      *:-moz-full-screen iframe,
-      .zenvora-forced-fullscreen-video {
+      video:-moz-full-screen {
         width: 100vw !important;
         height: 100vh !important;
-        max-width: 100vw !important;
-        max-height: 100vh !important;
-        object-fit: contain !important;
-        margin: 0px !important;
-        padding: 0px !important;
         background: #000 !important;
       }
     `;
@@ -280,7 +219,7 @@
         return;
       }
 
-      // A. Pastikan semua iframe pemutar video mengizinkan fullscreen (termasuk di dalam nested container)
+      // A. Pastikan semua iframe pemutar video mengizinkan fullscreen
       const iframes = document.querySelectorAll("iframe");
       for (let i = 0; i < iframes.length; i++) {
         const frame = iframes[i];
@@ -293,7 +232,6 @@
         if (!allowAttr.includes("fullscreen")) {
           frame.setAttribute("allow", (allowAttr ? allowAttr + "; " : "") + "fullscreen *; autoplay *; encrypted-media *; picture-in-picture *");
         }
-        // Jika iframe berasal dari domain iklan atau shortlink judi, sembunyikan
         const frameSrc = (frame.getAttribute("src") || "").toLowerCase();
         for (let j = 0; j < AD_HREF_PATTERNS.length; j++) {
           if (frameSrc.includes(AD_HREF_PATTERNS[j])) {
@@ -341,7 +279,7 @@
         const styleAttr = (el.getAttribute("style") || "").toLowerCase();
         if (
           el.tagName === "DIV" &&
-          (styleAttr.includes("z-index: 99") || styleAttr.includes("z-index:99") || styleAttr.includes("z-index: 2147483647") || styleAttr.includes("z-index: 9999")) &&
+          (styleAttr.includes("z-index: 999") || styleAttr.includes("z-index:999") || styleAttr.includes("z-index: 2147483647")) &&
           (styleAttr.includes("position: absolute") || styleAttr.includes("position:absolute") || styleAttr.includes("position: fixed") || styleAttr.includes("position:fixed")) &&
           el.children.length === 0 &&
           (el.textContent || "").trim() === ""

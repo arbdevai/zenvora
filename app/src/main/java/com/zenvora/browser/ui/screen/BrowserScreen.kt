@@ -93,9 +93,9 @@ private enum class RedmiVideoFitMode(
     val scaleX: Float,
     val scaleY: Float
 ) {
-    PAS_LAYAR_20_9("Pas Layar 20:9", 1.24f, 1.02f),
-    ZOOM_PENUH_20_9("Zoom Penuh", 1.25f, 1.25f),
-    STANDAR_16_9("Rasio 16:9", 1.0f, 1.0f)
+    STANDAR_16_9("Rasio 16:9", 1.0f, 1.0f),
+    PAS_LAYAR_20_9("Pas Layar 20:9", 1.18f, 1.0f),
+    ZOOM_PENUH_20_9("Zoom Penuh", 1.22f, 1.22f)
 }
 
 @Composable
@@ -116,12 +116,13 @@ fun BrowserScreen(
     val searchEngineUrl by viewModel.searchEngineUrl.collectAsStateWithLifecycle()
     val networkStats by viewModel.networkStats.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
+    val availableUpdateBadge by viewModel.availableUpdateBadge.collectAsStateWithLifecycle()
 
     var currentPage by remember { mutableStateOf(ActiveFullScreenPage.BROWSER) }
     var isToolbarVisible by remember { mutableStateOf(true) }
     var lastToolbarToggleMs by remember { mutableLongStateOf(0L) }
 
-    var videoFitMode by remember { mutableStateOf(RedmiVideoFitMode.PAS_LAYAR_20_9) }
+    var videoFitMode by remember { mutableStateOf(RedmiVideoFitMode.STANDAR_16_9) }
     var showVideoOverlayControls by remember { mutableStateOf(true) }
     var lastVideoTouchMs by remember { mutableLongStateOf(0L) }
 
@@ -144,7 +145,7 @@ fun BrowserScreen(
         }
     }
 
-    // Mode Immersive Penuh untuk Video Streaming Fullscreen pada Layar Redmi 9C (20:9)
+    // Mode Immersive Penuh untuk Video Streaming Fullscreen dengan Posisi Simetris di Tengah Layar
     val view = LocalView.current
     LaunchedEffect(activeTabState.isFullScreen) {
         val activity = view.context as? Activity ?: return@LaunchedEffect
@@ -155,7 +156,7 @@ fun BrowserScreen(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 window.attributes = window.attributes.apply {
                     layoutInDisplayCutoutMode =
-                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER
                 }
             }
             insetsController.systemBarsBehavior =
@@ -164,6 +165,12 @@ fun BrowserScreen(
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         } else {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                window.attributes = window.attributes.apply {
+                    layoutInDisplayCutoutMode =
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+                }
+            }
             insetsController.show(WindowInsetsCompat.Type.systemBars())
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
@@ -380,6 +387,7 @@ fun BrowserScreen(
                                     } else {
                                         BrowserGeckoView(
                                             activeSession = viewModel.getActiveSession(),
+                                            isFullScreen = activeTabState.isFullScreen,
                                             videoScaleX = if (activeTabState.isFullScreen) videoFitMode.scaleX else 1f,
                                             videoScaleY = if (activeTabState.isFullScreen) videoFitMode.scaleY else 1f,
                                             modifier = Modifier.fillMaxSize()
@@ -406,6 +414,7 @@ fun BrowserScreen(
                                             tabsCount = tabs.size,
                                             isBookmarked = isBookmarked,
                                             networkSpeedText = networkStats.formattedDownloadSpeed,
+                                            availableUpdateVersion = availableUpdateBadge?.versionName,
                                             isIncognito = activeTabState.isIncognito,
                                             onNavigate = { viewModel.loadInput(it) },
                                             onHomeClick = { viewModel.navigateHome() },
@@ -415,7 +424,7 @@ fun BrowserScreen(
                                             onNewIncognitoTabClick = { viewModel.createNewTab(isIncognito = true) },
                                             onFindInPageClick = { viewModel.startFindInPage() },
                                             onToggleDesktopMode = { viewModel.toggleDesktopMode() },
-                                            onEnterVideoFullScreen = { viewModel.enterFullScreen() },
+                                            onCheckUpdateClick = { viewModel.checkForUpdates() },
                                             onSecurityClick = { currentPage = ActiveFullScreenPage.SECURITY },
                                             onTabsClick = { currentPage = ActiveFullScreenPage.TABS },
                                             onBookmarkClick = {

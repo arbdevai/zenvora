@@ -317,13 +317,16 @@ class BrowserSession(
         geckoSession.reload(GeckoSession.LOAD_FLAGS_BYPASS_CACHE)
     }
 
-    fun enterFullScreen() {
-        _tabState.update { it.copy(isFullScreen = true) }
-    }
-
     fun exitFullScreen() {
         geckoSession.exitFullScreen()
+        geckoSession.setActive(true)
         _tabState.update { it.copy(isFullScreen = false) }
+    }
+
+    fun configureInitialDesktopMode(enabled: Boolean) {
+        desktopModeEnabled = enabled
+        applyDesktopSettings(enabled)
+        _tabState.update { it.copy(isDesktopMode = enabled) }
     }
 
     fun setDesktopMode(enabled: Boolean) {

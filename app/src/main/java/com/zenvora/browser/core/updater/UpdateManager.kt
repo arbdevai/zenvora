@@ -127,7 +127,59 @@ class UpdateManager(private val context: Context) {
         return Triple(fallback.second, fallback.third, "$detectedTag (${fallback.first})")
     }
 
+    private val _availableUpdateBadge = MutableStateFlow<AppUpdateInfo?>(null)
+    val availableUpdateBadge: StateFlow<AppUpdateInfo?> = _availableUpdateBadge.asStateFlow()
+
+    suspend fun checkForUpdatesSilently(releasesApiUrl: String) = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder()
+                .url(releasesApiUrl)
+                .header("Accept", "application/vnd.github.v3+json")
+                .build()
+
+            val response = httpClient.newCall(request).execute()
+            if (!response.isSuccessful) return@withContext
+
+            val responseBody = response.body?.string() ?: ""
+            if (responseBody.isEmpty()) return@withContext
+
+            val json = JSONObject(responseBody)
+            val tagName = json.optString("tag_name", "").removePrefix("v")
+            val releaseNotes = json.optString("body", "Pembaruan performa dan keamanan sistem.")
+            val assets = json.optJSONArray("assets")
+
+            val selectedAsset = selectBestApkAsset(assets) ?: return@withContext
+            if (tagName.isEmpty()) return@withContext
+
+            val (downloadUrl, fileSizeBytes, matchedAbiLabel) = selectedAsset
+            val deviceAbi = getDevicePrimaryArmAbi()
+
+            if (isNewerVersion(tagName, BuildConfig.VERSION_NAME)) {
+                val info = AppUpdateInfo(
+                    versionName = tagName,
+                    versionCode = BuildConfig.VERSION_CODE + 1L,
+                    downloadUrl = downloadUrl,
+                    releaseNotes = releaseNotes,
+                    fileSizeBytes = fileSizeBytes,
+                    matchedAbi = deviceAbi,
+                    assetName = matchedAbiLabel
+                )
+                _availableUpdateBadge.value = info
+            } else {
+                _availableUpdateBadge.value = null
+            }
+        } catch (_: Exception) {
+            // Pemeriksaan otomatis di latar belakang tidak boleh mengganggu pengguna jika offline
+        }
+    }
+
     suspend fun checkForUpdates(releasesApiUrl: String) = withContext(Dispatchers.IO) {
+        val cachedInfo = _availableUpdateBadge.value
+        if (cachedInfo != null && isNewerVersion(cachedInfo.versionName, BuildConfig.VERSION_NAME)) {
+            _updateState.value = UpdateState.UpdateAvailable(cachedInfo)
+            return@withContext
+        }
+
         _updateState.value = UpdateState.Checking
         cleanOldUpdateFiles()
 
@@ -173,8 +225,10 @@ class UpdateManager(private val context: Context) {
                     matchedAbi = deviceAbi,
                     assetName = matchedAbiLabel
                 )
+                _availableUpdateBadge.value = info
                 _updateState.value = UpdateState.UpdateAvailable(info)
             } else {
+                _availableUpdateBadge.value = null
                 _updateState.value = UpdateState.NoUpdateAvailable
             }
 

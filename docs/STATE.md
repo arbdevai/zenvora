@@ -1,9 +1,9 @@
 # Project State & Session Memory
 
 ## Status Saat Ini
-- **Fase Aktif:** Fase 7: Dynamic Hardware Codec Detector, YouTube Background Play, Universal Fullscreen Bridge & WordPress Ad Shield (v1.6.0)
-- **Versi Terakhir:** v1.6.0 (versionCode: 10600)
-- **Status CI Terakhir:** Siap Commit & Push v1.6.0 ke GitHub Actions
+- **Fase Aktif:** Fase 8: Clean YouTube Fullscreen UI, Centered Landscape Viewport, Blank-Screen Exit Fix, 3-Dot Auto Update Detector & Persistent Tabs (v1.7.0)
+- **Versi Terakhir:** v1.7.0 (versionCode: 10700)
+- **Status CI Terakhir:** Siap Commit & Push v1.7.0 ke GitHub Actions
 - **Remote Repo:** https://github.com/arbdevai/zenvora
 
 ## Fitur yang Selesai Tuntas (Vertical Slices)
@@ -35,7 +35,12 @@
   2. Buat `HardwareCodecDetector` berbasis `MediaCodecList(MediaCodecList.ALL_CODECS)` yang mendeteksi dekoder hardware fisik (`H.264`, `HEVC`, `VP9`, `AV1`) secara dinamis sesuai chipset HP (tanpa hardcode) + opsi `VideoCodecMode` di Setelan, serta jeda scanner DOM saat video sedang fullscreen.
   3. Aktifkan pemutaran latar belakang YouTube/streaming dengan men-spoof `document.visibilityState = 'visible'`, `document.hidden = false`, memblokir event `visibilitychange`, dan menjaga sesi aktif (`media.geckoview.enable-When-In-Background: true` + `keepBackgroundMediaAlive`).
   4. Pasang Universal Fullscreen Video Engine Bridge di `content_shield.js` (`requestFullscreen` patcher + pendeteksi klik tombol fullscreen custom) dan filter banner GIF/plugin iklan WordPress (`ad-inserter`, `wp-quads`, `.gif` eksternal).
+- *Catatan #19:* **Elemen YouTube Hilang Saat Fullscreen, Posisi Condong ke Kanan, Layar Blank Saat Keluar Fullscreen, Menu Update di Titik 3 & Tab Hilang Saat Update APK (v1.6.0 -> Fixed v1.7.0)**:
+  1. Hapus aturan CSS `*:fullscreen video` dan `div[class*="kln"]` di `content_shield.js` karena menimpa layer kontrol tombol Settings/timeline di dalam `#movie_player:fullscreen` YouTube.
+  2. Gunakan `LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER` saat landscape fullscreen, set default rasio ke `STANDAR_16_9` (`1.0f, 1.0f`), dan tambahkan `TransformOrigin.Center` agar video tepat di tengah layar tanpa ruang hitam timpang di kiri.
+  3. Panggil `geckoView.requestLayout()` dan `geckoView.invalidate()` secara sinkron dan tertunda (`180ms`) di `LaunchedEffect(isFullScreen)` serta `geckoSession.setActive(true)` di `exitFullScreen()` agar `SurfaceView` tidak blank hitam saat kembali ke portrait.
+  4. Hapus tombol `"Layar Penuh Video (20:9)"` dari menu titik 3, pindahkan menu **Periksa Update Zenvora** ke menu titik 3 lengkap dengan deteksi rilis terbaru otomatis (`checkForUpdatesSilently` + indikator badge titik oranye), dan simpan seluruh sesi tab secara real-time ke `DataStore` (`saved_tabs_json`) agar tab langsung pulih utuh setelah update APK.
 
 ## Tugas Aktif Selanjutnya (Next Actions)
 1. Verifikasi sintaksis `python3 /home/coder/.gemini/config/skills/android-compose-builder/scripts/verify_kotlin_syntax.py .` (0 hard errors).
-2. Commit dan push rilis `v1.6.0` ke `origin main` serta pantau workflow GitHub Actions hingga selesai.
+2. Commit dan push rilis `v1.7.0` ke `origin main` serta pantau workflow GitHub Actions hingga selesai.

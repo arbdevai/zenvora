@@ -22,6 +22,8 @@ class PreferencesRepository(private val context: Context) {
         val DNS_PROVIDER_ID = stringPreferencesKey("dns_provider_id")
         val VIDEO_CODEC_MODE_ID = stringPreferencesKey("video_codec_mode_id")
         val BACKGROUND_AUDIO_ENABLED = booleanPreferencesKey("background_audio_enabled")
+        val SAVED_TABS_JSON = stringPreferencesKey("saved_tabs_json")
+        val ACTIVE_TAB_ID = stringPreferencesKey("active_tab_id")
     }
 
     val isAdblockEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -50,6 +52,14 @@ class PreferencesRepository(private val context: Context) {
 
     val isBackgroundAudioEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[PreferencesKeys.BACKGROUND_AUDIO_ENABLED] ?: true
+    }
+
+    val savedTabsJson: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.SAVED_TABS_JSON] ?: ""
+    }
+
+    val savedActiveTabId: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.ACTIVE_TAB_ID] ?: ""
     }
 
     suspend fun setAdblockEnabled(enabled: Boolean) {
@@ -91,6 +101,13 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setBackgroundAudioEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.BACKGROUND_AUDIO_ENABLED] = enabled
+        }
+    }
+
+    suspend fun saveTabsSession(tabsJson: String, activeTabId: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.SAVED_TABS_JSON] = tabsJson
+            preferences[PreferencesKeys.ACTIVE_TAB_ID] = activeTabId
         }
     }
 }

@@ -26,9 +26,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -46,6 +49,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     val updateManager = UpdateManager(context)
     val updateState: StateFlow<UpdateState> = updateManager.updateState
+    val availableUpdateBadge: StateFlow<AppUpdateInfo?> = updateManager.availableUpdateBadge
 
     val downloadManager = BrowserDownloadManager(context)
     val downloads: StateFlow<List<DownloadItem>> = downloadManager.downloads
@@ -92,6 +96,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     private val _securityInfo = MutableStateFlow(SecurityInfo())
     val securityInfo: StateFlow<SecurityInfo> = _securityInfo.asStateFlow()
+
+    private var isRestoringTabs = true
 
     init {
         networkSpeedManager.startMonitoring(viewModelScope)
@@ -154,7 +160,88 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 )
             }
         }
+        // Pulihkan seluruh tab yang terbuka (termasuk saat APK di-update) & jalankan deteksi update otomatis
+        viewModelScope.launch {
+            restoreSavedTabsOrDefault()
+            updateManager.checkForUpdatesSilently("https://api.github.com/repos/arbdevai/zenvora/releases/latest")
+        }
+    }
+
+    private suspend fun restoreSavedTabsOrDefault() {
+        isRestoringTabs = true
+        try {
+            val savedJson = preferencesRepository.savedTabsJson.first()
+            val savedActiveId = preferencesRepository.savedActiveTabId.first()
+            if (savedJson.isNotEmpty()) {
+                val jsonArray = JSONArray(savedJson)
+                var restoredCount = 0
+                var targetActiveId = ""
+                for (i in 0 until jsonArray.length()) {
+                    val obj = jsonArray.optJSONObject(i) ?: continue
+                    val id = obj.optString("id", UUID.randomUUID().toString())
+                    val url = obj.optString("url", "about:blank").ifEmpty { "about:blank" }
+                    val title = obj.optString("title", "Tab Baru").ifEmpty { "Tab Baru" }
+                    val isDesktop = obj.optBoolean("isDesktopMode", false)
+
+                    val session = BrowserSession(id, isIncognito = false)
+                    session.adblockEnabled = isAdblockEnabled.value
+                    session.initSession(context, runtime)
+                    if (isDesktop) {
+                        session.configureInitialDesktopMode(true)
+                    }
+                    sessionsMap[id] = session
+
+                    val restoredTab = BrowserTab(
+                        id = id,
+                        url = url,
+                        title = title,
+                        isIncognito = false,
+                        isDesktopMode = isDesktop
+                    )
+                    _tabs.update { it + restoredTab }
+                    if (id == savedActiveId || targetActiveId.isEmpty()) {
+                        targetActiveId = id
+                    }
+                    if (url != "about:blank") {
+                        session.loadUri(url)
+                    }
+                    observeSession(session)
+                    restoredCount++
+                }
+                if (restoredCount > 0) {
+                    selectTab(targetActiveId)
+                    isRestoringTabs = false
+                    return
+                }
+            }
+        } catch (_: Exception) {
+            // Jika format lama/rusak, buat tab standar baru
+        }
+        isRestoringTabs = false
         createNewTab("about:blank")
+    }
+
+    private fun persistTabsToStorage() {
+        if (isRestoringTabs) return
+        val currentTabs = _tabs.value.filter { !it.isIncognito }
+        val activeId = _activeTabId.value
+        viewModelScope.launch {
+            try {
+                val arr = JSONArray()
+                for (tab in currentTabs) {
+                    val obj = JSONObject().apply {
+                        put("id", tab.id)
+                        put("url", tab.url)
+                        put("title", tab.title)
+                        put("isDesktopMode", tab.isDesktopMode)
+                    }
+                    arr.put(obj)
+                }
+                preferencesRepository.saveTabsSession(arr.toString(), activeId)
+            } catch (_: Exception) {
+                // Abaikan kegagalan serialisasi minor
+            }
+        }
     }
 
     fun getSession(tabId: String): BrowserSession? {
@@ -181,6 +268,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
         _tabs.update { it + newTab }
         selectTab(tabId)
+        persistTabsToStorage()
 
         if (initialUrl != "about:blank") {
             session.loadUri(initialUrl)
@@ -190,6 +278,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun observeSession(session: BrowserSession) {
+        var lastPersistedUrl = ""
+        var lastPersistedTitle = ""
+        var lastPersistedDesktop = false
         viewModelScope.launch {
             session.tabState.collect { updatedTab ->
                 _tabs.update { tabList ->
@@ -200,6 +291,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                     if (updatedTab.url.startsWith("http") && !updatedTab.isLoading && updatedTab.progress == 100 && !updatedTab.isIncognito) {
                         saveHistoryEntry(updatedTab.url, updatedTab.title.ifEmpty { updatedTab.url })
                     }
+                }
+                if (!updatedTab.isIncognito &&
+                    (updatedTab.url != lastPersistedUrl ||
+                        updatedTab.title != lastPersistedTitle ||
+                        updatedTab.isDesktopMode != lastPersistedDesktop)
+                ) {
+                    lastPersistedUrl = updatedTab.url
+                    lastPersistedTitle = updatedTab.title
+                    lastPersistedDesktop = updatedTab.isDesktopMode
+                    persistTabsToStorage()
                 }
             }
         }
@@ -221,6 +322,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 _activeTabState.value = session.tabState.value
                 _securityInfo.value = session.securityInfo.value
             }
+            persistTabsToStorage()
         }
     }
 
@@ -236,6 +338,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         } else if (_activeTabId.value == tabId) {
             selectTab(remainingTabs.last().id)
         }
+        persistTabsToStorage()
     }
 
     fun navigateHome() {
@@ -250,6 +353,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 isFullScreen = false
             )
         }
+        persistTabsToStorage()
     }
 
     fun loadInput(input: String) {
@@ -287,10 +391,6 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun reload() {
         getActiveSession()?.reload()
-    }
-
-    fun enterFullScreen() {
-        getActiveSession()?.enterFullScreen()
     }
 
     fun exitFullScreen() {
