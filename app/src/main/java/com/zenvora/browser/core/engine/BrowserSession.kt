@@ -91,8 +91,7 @@ class BrowserSession(
                 _securityInfo.update {
                     it.copy(
                         status = if (isSecure) SecurityStatus.SECURE else SecurityStatus.INSECURE,
-                        certificateSubject = securityInfo.subjectName,
-                        certificateIssuer = securityInfo.issuerName
+                        host = securityInfo.origin ?: it.host
                     )
                 }
             }
@@ -102,7 +101,8 @@ class BrowserSession(
             override fun onLocationChange(
                 session: GeckoSession,
                 url: String?,
-                perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>
+                perms: MutableList<GeckoSession.PermissionDelegate.ContentPermission>,
+                hasUserGesture: Boolean
             ) {
                 val safeUrl = url ?: "about:blank"
                 _tabState.update { it.copy(url = safeUrl) }
