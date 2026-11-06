@@ -1,9 +1,9 @@
 # Project State & Session Memory
 
 ## Status Saat Ini
-- **Fase Aktif:** Fase 8: Clean YouTube Fullscreen UI, Centered Landscape Viewport, Blank-Screen Exit Fix, 3-Dot Auto Update Detector & Persistent Tabs (v1.7.0)
-- **Versi Terakhir:** v1.7.0 (versionCode: 10700)
-- **Status CI Terakhir:** Siap Commit & Push v1.7.0 ke GitHub Actions
+- **Fase Aktif:** Fase 9: Real Edge-to-Edge Fullscreen, Android MediaSession Notification Player, Zero-Shift Smooth APZ Scroll & Mozilla WebExtension Store (v1.8.0)
+- **Versi Terakhir:** v1.8.0 (versionCode: 10800)
+- **Status CI Terakhir:** Siap Commit & Push v1.8.0 ke GitHub Actions
 - **Remote Repo:** https://github.com/arbdevai/zenvora
 
 ## Fitur yang Selesai Tuntas (Vertical Slices)
@@ -40,7 +40,12 @@
   2. Gunakan `LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER` saat landscape fullscreen, set default rasio ke `STANDAR_16_9` (`1.0f, 1.0f`), dan tambahkan `TransformOrigin.Center` agar video tepat di tengah layar tanpa ruang hitam timpang di kiri.
   3. Panggil `geckoView.requestLayout()` dan `geckoView.invalidate()` secara sinkron dan tertunda (`180ms`) di `LaunchedEffect(isFullScreen)` serta `geckoSession.setActive(true)` di `exitFullScreen()` agar `SurfaceView` tidak blank hitam saat kembali ke portrait.
   4. Hapus tombol `"Layar Penuh Video (20:9)"` dari menu titik 3, pindahkan menu **Periksa Update Zenvora** ke menu titik 3 lengkap dengan deteksi rilis terbaru otomatis (`checkForUpdatesSilently` + indikator badge titik oranye), dan simpan seluruh sesi tab secara real-time ke `DataStore` (`saved_tabs_json`) agar tab langsung pulih utuh setelah update APK.
+- *Catatan #20:* **Real Fullscreen Terpotong Area Poni Kiri, Pemutar Media Tidak Muncul di QS Panel Android, Scroll Web Kurang Smooth & Kebutuhan Ekstensi uBlock Origin / Store (v1.7.0 -> Fixed v1.8.0)**:
+  1. Gunakan `LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS` (Android 11+) / `LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES` (Android 9-10), sembunyikan `WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()`, dan pasang `ViewCompat.setOnApplyWindowInsetsListener(geckoView) { _, insets -> if (isFullScreen) WindowInsetsCompat.CONSUMED else insets }` agar `GeckoView` tidak menerima `safe-area-inset-left` yang menggeser player ke kanan.
+  2. Buat `BrowserMediaNotificationManager` yang menghubungkan `org.mozilla.geckoview.MediaSession.Delegate` ke Android `android.media.session.MediaSession` + `Notification.MediaStyle` sehingga pemutar video/musik tampil di Statusbar, Lockscreen, dan QS Panel Android.
+  3. Hapus `.offset` pada `BrowserGeckoView` agar `SurfaceView` tetap 100% statis saat scroll (menggunakan overlay toolbar murni) dan aktifkan physics `apz.overscroll.enabled`, `apz.gtk.kinetic_scroll.enabled`, serta `general.smoothScroll` di `gecko-config.yaml`.
+  4. Buat `ExtensionManager` & `ExtensionsSheet` (diakses dari menu titik 3) untuk menginstal 1-klik **uBlock Origin**, **Dark Reader**, **SponsorBlock**, **Tampermonkey**, **ClearURLs**, atau menginstal langsung file `.xpi` dari **Mozilla Add-ons Store (`addons.mozilla.org`)**.
 
 ## Tugas Aktif Selanjutnya (Next Actions)
 1. Verifikasi sintaksis `python3 /home/coder/.gemini/config/skills/android-compose-builder/scripts/verify_kotlin_syntax.py .` (0 hard errors).
-2. Commit dan push rilis `v1.7.0` ke `origin main` serta pantau workflow GitHub Actions hingga selesai.
+2. Commit dan push rilis `v1.8.0` ke `origin main` serta pantau workflow GitHub Actions hingga selesai.

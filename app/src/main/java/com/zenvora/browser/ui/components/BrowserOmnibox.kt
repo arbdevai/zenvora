@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DesktopWindows
+import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
@@ -99,6 +100,7 @@ fun BrowserOmnibox(
     onForwardClick: () -> Unit,
     onNewTabClick: () -> Unit,
     onNewIncognitoTabClick: () -> Unit,
+    onExtensionsClick: () -> Unit,
     onFindInPageClick: () -> Unit,
     onToggleDesktopMode: () -> Unit,
     onCheckUpdateClick: () -> Unit,
@@ -449,6 +451,25 @@ fun BrowserOmnibox(
                         onClick = {
                             showOverflowMenu = false
                             onHistoryClick()
+                        }
+                    )
+
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text("Ekstensi & Add-on Store", color = TextPrimary)
+                                Text(
+                                    text = "uBlock Origin, Dark Reader & Plugin",
+                                    style = TextStyle(color = ElectricOrange, fontSize = 11.sp)
+                                )
+                            }
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Filled.Extension, contentDescription = null, tint = ElectricOrange)
+                        },
+                        onClick = {
+                            showOverflowMenu = false
+                            onExtensionsClick()
                         }
                     )
 

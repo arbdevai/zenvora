@@ -97,6 +97,12 @@ object GeckoRuntimeManager {
               gfx.webrender.all: true
               layers.acceleration.force-enabled: true
               layout.frame_rate: 60
+              apz.overscroll.enabled: true
+              apz.gtk.kinetic_scroll.enabled: true
+              general.smoothScroll: true
+              apz.fling_min_velocity_threshold: "0.1"
+              xpinstall.signatures.required: false
+              extensions.webextensions.RemoteSettings.disabled: true
         """.trimIndent()
 
         configFile.writeText(yamlContent)

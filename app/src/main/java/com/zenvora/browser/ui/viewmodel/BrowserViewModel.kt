@@ -10,6 +10,10 @@ import com.zenvora.browser.core.engine.GeckoRuntimeManager
 import com.zenvora.browser.core.engine.HardwareCodecDetector
 import com.zenvora.browser.core.engine.HardwareVideoCapabilities
 import com.zenvora.browser.core.engine.VideoCodecMode
+import com.zenvora.browser.core.extensions.ExtensionManager
+import com.zenvora.browser.core.extensions.InstalledExtensionInfo
+import com.zenvora.browser.core.extensions.RecommendedAddon
+import com.zenvora.browser.core.media.BrowserMediaNotificationManager
 import com.zenvora.browser.core.network.DnsProvider
 import com.zenvora.browser.core.network.NetworkSpeedManager
 import com.zenvora.browser.core.network.NetworkStats
@@ -53,6 +57,13 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     val downloadManager = BrowserDownloadManager(context)
     val downloads: StateFlow<List<DownloadItem>> = downloadManager.downloads
+
+    val extensionManager = ExtensionManager(runtime)
+    val installedExtensions: StateFlow<List<InstalledExtensionInfo>> = extensionManager.installedExtensions
+    val installingAddonId: StateFlow<String?> = extensionManager.installingAddonId
+    val extensionStatusMessage: StateFlow<String?> = extensionManager.statusMessage
+
+    private val mediaNotificationManager = BrowserMediaNotificationManager(context)
 
     val isAdblockEnabled: StateFlow<Boolean> = preferencesRepository.isAdblockEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
@@ -185,7 +196,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
                     val session = BrowserSession(id, isIncognito = false)
                     session.adblockEnabled = isAdblockEnabled.value
-                    session.initSession(context, runtime)
+                    session.onXpiInstallRequested = { xpiUri ->
+                        extensionManager.installFromUrl(xpiUri)
+                    }
+                    session.initSession(
+                        context = context,
+                        runtime = runtime,
+                        mediaSessionDelegate = mediaNotificationManager.createGeckoMediaDelegate {
+                            session.tabState.value.title
+                        }
+                    )
                     if (isDesktop) {
                         session.configureInitialDesktopMode(true)
                     }
@@ -256,7 +276,16 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         val tabId = UUID.randomUUID().toString()
         val session = BrowserSession(tabId, isIncognito = isIncognito)
         session.adblockEnabled = isAdblockEnabled.value
-        session.initSession(context, runtime)
+        session.onXpiInstallRequested = { xpiUri ->
+            extensionManager.installFromUrl(xpiUri)
+        }
+        session.initSession(
+            context = context,
+            runtime = runtime,
+            mediaSessionDelegate = mediaNotificationManager.createGeckoMediaDelegate {
+                session.tabState.value.title
+            }
+        )
         sessionsMap[tabId] = session
 
         val newTab = BrowserTab(
@@ -583,8 +612,29 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         updateManager.dismiss()
     }
 
+    fun installRecommendedAddon(addon: RecommendedAddon) {
+        extensionManager.installFromUrl(addon.xpiDownloadUrl, addon.id)
+    }
+
+    fun installCustomXpi(xpiUrl: String) {
+        extensionManager.installFromUrl(xpiUrl)
+    }
+
+    fun toggleExtension(info: InstalledExtensionInfo, enable: Boolean) {
+        extensionManager.toggleExtension(info, enable)
+    }
+
+    fun uninstallExtension(info: InstalledExtensionInfo) {
+        extensionManager.uninstallExtension(info)
+    }
+
+    fun refreshExtensions() {
+        extensionManager.refreshInstalledExtensions()
+    }
+
     override fun onCleared() {
         super.onCleared()
+        mediaNotificationManager.release()
         sessionsMap.values.forEach { it.close() }
         sessionsMap.clear()
     }

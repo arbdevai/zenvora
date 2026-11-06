@@ -53,10 +53,15 @@ class BrowserSession(
     private var isOpen = false
     private var desktopModeEnabled = false
     var adblockEnabled = true
+    var onXpiInstallRequested: ((String) -> Unit)? = null
 
-    fun initSession(context: Context, runtime: GeckoRuntime) {
+    fun initSession(
+        context: Context,
+        runtime: GeckoRuntime,
+        mediaSessionDelegate: org.mozilla.geckoview.MediaSession.Delegate? = null
+    ) {
         if (!isOpen) {
-            setupDelegates()
+            setupDelegates(mediaSessionDelegate)
             geckoSession.open(runtime)
             geckoSession.setActive(true)
             isOpen = true
@@ -110,7 +115,10 @@ class BrowserSession(
         }
     }
 
-    private fun setupDelegates() {
+    private fun setupDelegates(mediaSessionDelegate: org.mozilla.geckoview.MediaSession.Delegate? = null) {
+        if (mediaSessionDelegate != null) {
+            geckoSession.mediaSessionDelegate = mediaSessionDelegate
+        }
         geckoSession.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(session: GeckoSession, url: String) {
                 applyDesktopSettings(desktopModeEnabled)
@@ -166,6 +174,14 @@ class BrowserSession(
             ): GeckoResult<AllowOrDeny> {
                 applyDesktopSettings(desktopModeEnabled)
                 val targetUri = request.uri
+
+                // 0. Tangkap instalasi langsung file ekstensi .xpi dari Mozilla Add-ons Store (addons.mozilla.org)
+                if (targetUri.startsWith("https://") &&
+                    (targetUri.endsWith(".xpi") || targetUri.contains(".xpi?"))
+                ) {
+                    onXpiInstallRequested?.invoke(targetUri)
+                    return GeckoResult.fromValue(AllowOrDeny.DENY)
+                }
 
                 // 1. Blokir permintaan / redirect ke domain iklan & pop-under via Native Rust AdblockEngine
                 if (adblockEnabled && targetUri.startsWith("http") && AdblockEngine.isUrlBlocked(targetUri)) {

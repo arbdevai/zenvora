@@ -64,6 +64,7 @@ import com.zenvora.browser.core.updater.UpdateState
 import com.zenvora.browser.ui.components.BrowserGeckoView
 import com.zenvora.browser.ui.components.BrowserOmnibox
 import com.zenvora.browser.ui.components.ChromeNewTabPage
+import com.zenvora.browser.ui.components.ExtensionsSheet
 import com.zenvora.browser.ui.components.FindInPageBar
 import com.zenvora.browser.ui.components.HistoryBookmarkSheet
 import com.zenvora.browser.ui.components.SecurityDetailDialog
@@ -84,6 +85,7 @@ private enum class ActiveFullScreenPage {
     BROWSER,
     TABS,
     HISTORY_BOOKMARKS,
+    EXTENSIONS,
     SETTINGS,
     SECURITY
 }
@@ -94,8 +96,8 @@ private enum class RedmiVideoFitMode(
     val scaleY: Float
 ) {
     STANDAR_16_9("Rasio 16:9", 1.0f, 1.0f),
-    PAS_LAYAR_20_9("Pas Layar 20:9", 1.18f, 1.0f),
-    ZOOM_PENUH_20_9("Zoom Penuh", 1.22f, 1.22f)
+    PAS_LAYAR_20_9("Pas Layar 20:9", 1.24f, 1.02f),
+    ZOOM_PENUH_20_9("Zoom Penuh", 1.26f, 1.26f)
 }
 
 @Composable
@@ -117,6 +119,9 @@ fun BrowserScreen(
     val networkStats by viewModel.networkStats.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
     val availableUpdateBadge by viewModel.availableUpdateBadge.collectAsStateWithLifecycle()
+    val installedExtensions by viewModel.installedExtensions.collectAsStateWithLifecycle()
+    val installingAddonId by viewModel.installingAddonId.collectAsStateWithLifecycle()
+    val extensionStatusMessage by viewModel.extensionStatusMessage.collectAsStateWithLifecycle()
 
     var currentPage by remember { mutableStateOf(ActiveFullScreenPage.BROWSER) }
     var isToolbarVisible by remember { mutableStateOf(true) }
@@ -132,8 +137,12 @@ fun BrowserScreen(
 
     val isOnNewTabPage = activeTabState.url == "about:blank" || activeTabState.url.isEmpty()
 
-    LaunchedEffect(activeTabState.url, activeTabId) {
-        isToolbarVisible = true
+    // Sembunyikan otomatis Top Omnibox setelah halaman web selesai dimuat agar layar penuh & bebas gangguan saat scroll
+    LaunchedEffect(activeTabState.isLoading, activeTabState.url, isOnNewTabPage) {
+        if (!isOnNewTabPage && !activeTabState.isLoading && activeTabState.progress == 100) {
+            delay(2800L)
+            isToolbarVisible = false
+        }
     }
 
     // Sembunyikan otomatis kontrol rasio video setelah 3.5 detik saat menonton fullscreen
@@ -145,7 +154,7 @@ fun BrowserScreen(
         }
     }
 
-    // Mode Immersive Penuh untuk Video Streaming Fullscreen dengan Posisi Simetris di Tengah Layar
+    // Mode Real Fullscreen Edge-to-Edge Tanpa Balok Hitam Kiri (Menembus Area Cutout/Notch + Konsumsi Insets)
     val view = LocalView.current
     LaunchedEffect(activeTabState.isFullScreen) {
         val activity = view.context as? Activity ?: return@LaunchedEffect
@@ -153,22 +162,29 @@ fun BrowserScreen(
         val insetsController = WindowCompat.getInsetsController(window, view)
 
         if (activeTabState.isFullScreen) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 window.attributes = window.attributes.apply {
                     layoutInDisplayCutoutMode =
-                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_NEVER
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                window.attributes = window.attributes.apply {
+                    layoutInDisplayCutoutMode =
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
                 }
             }
             insetsController.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-            insetsController.hide(WindowInsetsCompat.Type.systemBars())
+            insetsController.hide(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         } else {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 window.attributes = window.attributes.apply {
                     layoutInDisplayCutoutMode =
-                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
                 }
             }
             insetsController.show(WindowInsetsCompat.Type.systemBars())
@@ -262,6 +278,31 @@ fun BrowserScreen(
                                     currentPage = ActiveFullScreenPage.BROWSER
                                 },
                                 onClearHistory = { viewModel.clearHistory() }
+                            )
+                        }
+
+                        ActiveFullScreenPage.EXTENSIONS -> {
+                            ExtensionsSheet(
+                                installedExtensions = installedExtensions,
+                                installingAddonId = installingAddonId,
+                                statusMessage = extensionStatusMessage,
+                                onInstallRecommended = { addon ->
+                                    viewModel.installRecommendedAddon(addon)
+                                },
+                                onInstallCustomXpiUrl = { url ->
+                                    viewModel.installCustomXpi(url)
+                                },
+                                onToggleExtension = { ext, enabled ->
+                                    viewModel.toggleExtension(ext, enabled)
+                                },
+                                onUninstallExtension = { ext ->
+                                    viewModel.uninstallExtension(ext)
+                                },
+                                onOpenMozillaStore = { storeUrl ->
+                                    viewModel.loadInput(storeUrl)
+                                    currentPage = ActiveFullScreenPage.BROWSER
+                                },
+                                onRefresh = { viewModel.refreshExtensions() }
                             )
                         }
 
@@ -362,13 +403,11 @@ fun BrowserScreen(
                                         }
                                     }
                             ) {
-                                // 1. Area Konten Web / Beranda dengan Tinggi Konstan 100% (Nol Glitch Hitam Bawah)
+                                // 1. Area Konten Web / Beranda:
+                                // GeckoView 100% statis (tanpa offset dan tanpa padding animasi) agar scroll 60fps sangat mulus
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .offset {
-                                            IntOffset(0, animatedTopOffsetPx.roundToInt())
-                                        }
                                         .background(OledBlack)
                                 ) {
                                     if (isOnNewTabPage) {
@@ -382,12 +421,16 @@ fun BrowserScreen(
                                             networkStats = networkStats,
                                             onNavigate = { viewModel.loadInput(it) },
                                             onOpenNetworkSettings = { currentPage = ActiveFullScreenPage.SETTINGS },
-                                            modifier = Modifier.fillMaxSize()
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(top = 57.dp)
                                         )
                                     } else {
                                         BrowserGeckoView(
                                             activeSession = viewModel.getActiveSession(),
                                             isFullScreen = activeTabState.isFullScreen,
+                                            dynamicToolbarMaxHeightPx = toolbarHeightPx.roundToInt(),
+                                            verticalClippingPx = 0,
                                             videoScaleX = if (activeTabState.isFullScreen) videoFitMode.scaleX else 1f,
                                             videoScaleY = if (activeTabState.isFullScreen) videoFitMode.scaleY else 1f,
                                             modifier = Modifier.fillMaxSize()
@@ -395,7 +438,7 @@ fun BrowserScreen(
                                     }
                                 }
 
-                                // 2. Top Omnibox yang Meluncur Halus via Offset Tanpa Mengubah Ukuran SurfaceView
+                                // 2. Top Omnibox yang Meluncur Halus via Offset di Atas Konten
                                 if (!activeTabState.isFullScreen) {
                                     Column(
                                         modifier = Modifier
@@ -422,6 +465,10 @@ fun BrowserScreen(
                                             onForwardClick = { viewModel.goForward() },
                                             onNewTabClick = { viewModel.createNewTab(isIncognito = false) },
                                             onNewIncognitoTabClick = { viewModel.createNewTab(isIncognito = true) },
+                                            onExtensionsClick = {
+                                                viewModel.refreshExtensions()
+                                                currentPage = ActiveFullScreenPage.EXTENSIONS
+                                            },
                                             onFindInPageClick = { viewModel.startFindInPage() },
                                             onToggleDesktopMode = { viewModel.toggleDesktopMode() },
                                             onCheckUpdateClick = { viewModel.checkForUpdates() },
