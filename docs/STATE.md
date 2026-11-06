@@ -1,9 +1,10 @@
 # Project State & Session Memory
 
 ## Status Saat Ini
-- **Fase Aktif:** Fase 1: Fondasi Arsitektur Selesai (GeckoView + Compose + Rust Adblock + Room DB)
+- **Fase Aktif:** Fase 2: Pendelegasian Penuh ke GitHub Actions CI Runner
 - **Versi Terakhir:** v1.0.0 (versionCode: 10000)
-- **Status CI Terakhir:** Siap Push ke GitHub Remote
+- **Status CI Terakhir:** Workflow CI Berjalan di GitHub Actions (Run ID: 4223032...)
+- **Remote Repo:** https://github.com/arbdevai/zenvora
 
 ## Fitur yang Selesai Tuntas (Vertical Slices)
 - [x] Wawancara PRD & Penentuan Keputusan Arsitektur Engine (GeckoView + Native Rust Adblock)
