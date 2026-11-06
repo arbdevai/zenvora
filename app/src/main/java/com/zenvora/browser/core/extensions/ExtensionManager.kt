@@ -99,7 +99,6 @@ class ExtensionManager(private val runtime: GeckoRuntime) {
                     return GeckoResult.fromValue(
                         WebExtension.PermissionPromptResponse(
                             true,
-                            true,
                             true
                         )
                     )
