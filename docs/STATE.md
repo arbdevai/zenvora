@@ -1,9 +1,9 @@
 # Project State & Session Memory
 
 ## Status Saat Ini
-- **Fase Aktif:** Fase 3: Produksi & Pemeliharaan (Seluruh Vertical Slices & CI Build Selesai)
-- **Versi Terakhir:** v1.0.0 (versionCode: 10000)
-- **Status CI Terakhir:** Hijau / Success (Run ID: 42233933293, Job ID: 127946543331)
+- **Fase Aktif:** Fase 3: Produksi & Pemeliharaan (v1.1.0 - Fix Force Close GeckoRuntime & Redesign Chrome UI Electric Orange x True Dark)
+- **Versi Terakhir:** v1.1.0 (versionCode: 10100)
+- **Status CI Terakhir:** Memicu CI Build v1.1.0 di GitHub Actions
 - **Remote Repo:** https://github.com/arbdevai/zenvora
 
 ## Fitur yang Selesai Tuntas (Vertical Slices)
@@ -29,6 +29,8 @@
 - *Catatan #03:* Room 2.6.1 di bawah KSP2 mengalami crash `unexpected jvm signature V` apabila fungsi `suspend` pada `@Dao` dengan `@Query("DELETE ...")` mengembalikan `Unit`. Solusi permanen: tambahkan `ksp.useKSP2=false` di `gradle.properties` dan kembalikan `: Int` pada query `DELETE`/`UPDATE`.
 - *Catatan #04:* GeckoView v136+ `NavigationDelegate.onLocationChange` membutuhkan 4 parameter (`session`, `url`, `perms`, `hasUserGesture: Boolean`), `SecurityInformation` menggunakan properti `origin`, dan konstanta pencarian halaman berada langsung di `GeckoSession.FINDER_FIND_BACKWARDS`.
 - *Catatan #05:* Folder `scripts/` diisolasi ke dalam `.gitignore` dan dihapus dari git tracking (`git rm -r --cached scripts/`) agar skrip internal chroot tidak bocor ke repositori publik.
+- *Catatan #06:* **Root Cause Force Close v1.0.0 (GeckoRuntime Multi-Process Fork-Bomb)**: `ZenvoraApp.onCreate()` memanggil `GeckoRuntimeManager.getRuntime(this)` tanpa mengecek nama proses. Karena GeckoView meluncurkan child process (`com.zenvora.browser:tab0..tab39`, `:gpu`) menggunakan kelas `Application` yang sama, setiap proses anak ikut membuat instance `GeckoRuntime` baru secara rekursif hingga Android ActivityManager membunuh aplikasi utama dengan `SIGKILL (signal 9)` setelah ~5 detik. Solusi permanen: cek `Application.getProcessName()` (skip jika mengandung `:`) dan inisialisasi `GeckoRuntime` secara lazy hanya di proses utama (`BrowserViewModel`).
+- *Catatan #07:* Redesign UI/UX ke tata letak standar Google Chrome Android (Top Omnibox Bar, tombol Home, Pill Address Bar, Tab Switcher Box `[1]`, Menu 3-Titik `⋮`, dan `ChromeNewTabPage` dengan Speed Dial 4x2) menggunakan palet warna **Electric Orange (`#FF6D00`) x True Dark OLED (`#000000`)**.
 
 ## Tugas Aktif Selanjutnya (Next Actions)
 1. Seluruh 6 Vertical Slices dan pipeline CI/CD GitHub Actions telah tuntas dan menghasilkan artefak rilis (`app-release`).

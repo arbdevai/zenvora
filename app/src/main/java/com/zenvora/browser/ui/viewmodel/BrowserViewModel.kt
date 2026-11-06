@@ -71,8 +71,8 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val securityInfo: StateFlow<SecurityInfo> = _securityInfo.asStateFlow()
 
     init {
-        // Inisialisasi tab pertama
-        createNewTab("https://duckduckgo.com")
+        // Inisialisasi tab pertama ke halaman beranda cepat (Chrome-style New Tab Page)
+        createNewTab("about:blank")
     }
 
     fun getSession(tabId: String): BrowserSession? {
@@ -83,7 +83,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         return sessionsMap[_activeTabId.value]
     }
 
-    fun createNewTab(initialUrl: String = "https://duckduckgo.com", isIncognito: Boolean = false) {
+    fun createNewTab(initialUrl: String = "about:blank", isIncognito: Boolean = false) {
         val tabId = UUID.randomUUID().toString()
         val session = BrowserSession(tabId, isIncognito = isIncognito)
         session.initSession(context, runtime)
@@ -149,9 +149,21 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         _tabs.value = remainingTabs
 
         if (remainingTabs.isEmpty()) {
-            createNewTab("https://duckduckgo.com")
+            createNewTab("about:blank")
         } else if (_activeTabId.value == tabId) {
             selectTab(remainingTabs.last().id)
+        }
+    }
+
+    fun navigateHome() {
+        getActiveSession()?.loadUri("about:blank")
+        _activeTabState.update {
+            it.copy(
+                url = "about:blank",
+                title = if (it.isIncognito) "Tab Samaran" else "Tab Baru",
+                isLoading = false,
+                progress = 100
+            )
         }
     }
 
@@ -273,7 +285,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun checkForUpdates(releasesApiUrl: String = "https://api.github.com/repos/zenvora/zenvora-browser/releases/latest") {
+    fun checkForUpdates(releasesApiUrl: String = "https://api.github.com/repos/arbdevai/zenvora/releases/latest") {
         viewModelScope.launch {
             updateManager.checkForUpdates(releasesApiUrl)
         }

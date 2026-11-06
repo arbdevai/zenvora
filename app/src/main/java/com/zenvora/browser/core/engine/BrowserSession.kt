@@ -118,6 +118,15 @@ class BrowserSession(
             }
         }
 
+        geckoSession.contentDelegate = object : GeckoSession.ContentDelegate {
+            override fun onTitleChange(session: GeckoSession, title: String?) {
+                val cleanTitle = title?.trim().orEmpty()
+                if (cleanTitle.isNotEmpty()) {
+                    _tabState.update { it.copy(title = cleanTitle) }
+                }
+            }
+        }
+
         geckoSession.contentBlockingDelegate = object : ContentBlocking.Delegate {
             override fun onContentBlocked(
                 session: GeckoSession,

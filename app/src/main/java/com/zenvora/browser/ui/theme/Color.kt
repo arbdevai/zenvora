@@ -2,24 +2,30 @@ package com.zenvora.browser.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// True Dark OLED Palette
+// True Dark OLED x Electric Orange Palette
 val OledBlack = Color(0xFF000000)
-val DarkSurface = Color(0xFF0D0D0D)
-val DarkSurfaceVariant = Color(0xFF161616)
-val DarkSurfaceContainer = Color(0xFF1E1E1E)
-val DarkOutline = Color(0xFF2C2C2C)
+val DarkSurface = Color(0xFF0A0A0A)
+val DarkSurfaceVariant = Color(0xFF141414)
+val DarkSurfaceContainer = Color(0xFF1A1A1A)
+val DarkOutline = Color(0xFF2E2E2E)
 
-val AccentTeal = Color(0xFF4DB6AC)
-val AccentTealDark = Color(0xFF00796B)
-val AccentTealLight = Color(0xFF80CBC4)
+// Electric Orange Accent (Primary Brand Color)
+val ElectricOrange = Color(0xFFFF6D00)
+val ElectricOrangeDark = Color(0xFFE65100)
+val ElectricOrangeLight = Color(0xFFFF9E40)
 
-val TextPrimary = Color(0xFFECEFF1)
-val TextSecondary = Color(0xFF90A4AE)
-val TextTertiary = Color(0xFF607D8B)
+// Alias agar komponen tetap konsisten
+val AccentTeal = ElectricOrange
+val AccentTealDark = ElectricOrangeDark
+val AccentTealLight = ElectricOrangeLight
 
-val SecurityGreen = Color(0xFF4CAF50)
-val SecurityRed = Color(0xFFE53935)
-val SecurityYellow = Color(0xFFFDD835)
+val TextPrimary = Color(0xFFF5F5F5)
+val TextSecondary = Color(0xFFB0B0B0)
+val TextTertiary = Color(0xFF757575)
+
+val SecurityGreen = Color(0xFF00E676)
+val SecurityRed = Color(0xFFFF5252)
+val SecurityYellow = Color(0xFFFFD740)
 
 val ShimmerBase = Color(0xFF121212)
-val ShimmerHighlight = Color(0xFF242424)
+val ShimmerHighlight = Color(0xFF262626)

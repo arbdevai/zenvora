@@ -27,13 +27,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zenvora.browser.ui.components.BrowserGeckoView
 import com.zenvora.browser.ui.components.BrowserOmnibox
+import com.zenvora.browser.ui.components.ChromeNewTabPage
 import com.zenvora.browser.ui.components.FindInPageBar
 import com.zenvora.browser.ui.components.HistoryBookmarkSheet
 import com.zenvora.browser.ui.components.SecurityDetailDialog
 import com.zenvora.browser.ui.components.SettingsSheet
 import com.zenvora.browser.ui.components.TabOverviewSheet
 import com.zenvora.browser.ui.components.UpdateDialog
-import com.zenvora.browser.ui.theme.AccentTeal
+import com.zenvora.browser.ui.theme.ElectricOrange
 import com.zenvora.browser.ui.theme.OledBlack
 import com.zenvora.browser.ui.viewmodel.BrowserViewModel
 
@@ -63,7 +64,15 @@ fun BrowserScreen(
     }
 
     // Penanganan tombol kembali Android
-    BackHandler {
+    BackHandler(
+        enabled = activeTabState.isFindInPageActive ||
+            showSecurityDialog ||
+            showTabOverview ||
+            showHistorySheet ||
+            showSettingsSheet ||
+            activeTabState.canGoBack ||
+            activeTabState.url != "about:blank"
+    ) {
         when {
             activeTabState.isFindInPageActive -> viewModel.closeFindInPage()
             showSecurityDialog -> showSecurityDialog = false
@@ -71,6 +80,7 @@ fun BrowserScreen(
             showHistorySheet -> showHistorySheet = false
             showSettingsSheet -> showSettingsSheet = false
             activeTabState.canGoBack -> viewModel.goBack()
+            activeTabState.url != "about:blank" -> viewModel.navigateHome()
         }
     }
 
@@ -86,7 +96,51 @@ fun BrowserScreen(
                 .imePadding()
                 .background(OledBlack)
         ) {
-            // Find in Page Bar
+            // 1. Top Toolbar ala Google Chrome Android
+            BrowserOmnibox(
+                currentUrl = activeTabState.url,
+                isLoading = activeTabState.isLoading,
+                canGoForward = activeTabState.canGoForward,
+                isDesktopMode = activeTabState.isDesktopMode,
+                securityInfo = securityInfo,
+                blockedCount = activeTabState.blockedRequestsCount,
+                tabsCount = tabs.size,
+                isBookmarked = isBookmarked,
+                isIncognito = activeTabState.isIncognito,
+                onNavigate = { viewModel.loadInput(it) },
+                onHomeClick = { viewModel.navigateHome() },
+                onReload = { viewModel.reload() },
+                onForwardClick = { viewModel.goForward() },
+                onNewTabClick = { viewModel.createNewTab(isIncognito = false) },
+                onNewIncognitoTabClick = { viewModel.createNewTab(isIncognito = true) },
+                onFindInPageClick = { viewModel.startFindInPage() },
+                onToggleDesktopMode = { viewModel.toggleDesktopMode() },
+                onSecurityClick = { showSecurityDialog = true },
+                onTabsClick = { showTabOverview = true },
+                onBookmarkClick = {
+                    viewModel.toggleBookmark(activeTabState.url, activeTabState.title)
+                },
+                onHistoryClick = { showHistorySheet = true },
+                onSettingsClick = { showSettingsSheet = true }
+            )
+
+            // 2. Indikator Progres Loading Electric Orange Tepat di Bawah Address Bar (Gaya Chrome)
+            AnimatedVisibility(
+                visible = activeTabState.isLoading,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                LinearProgressIndicator(
+                    progress = { activeTabState.progress / 100f },
+                    color = ElectricOrange,
+                    trackColor = Color.Transparent,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.5.dp)
+                )
+            }
+
+            // 3. Find in Page Bar (jika aktif)
             if (activeTabState.isFindInPageActive) {
                 FindInPageBar(
                     query = activeTabState.findQuery,
@@ -96,54 +150,32 @@ fun BrowserScreen(
                     onClose = { viewModel.closeFindInPage() }
                 )
             }
-            // Indikator Progres Loading Tipis
-            AnimatedVisibility(
-                visible = activeTabState.isLoading,
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
-                LinearProgressIndicator(
-                    progress = { activeTabState.progress / 100f },
-                    color = AccentTeal,
-                    trackColor = Color.Transparent,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(2.5.dp)
-                )
-            }
 
-            // Area Tampilan Web GeckoView
+            // 4. Area Konten Utama: Halaman Beranda Cepat ala Chrome atau GeckoView
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .background(Color.Black)
+                    .background(OledBlack)
             ) {
                 BrowserGeckoView(
                     activeSession = viewModel.getActiveSession(),
                     modifier = Modifier.fillMaxSize()
                 )
-            }
 
-            // Omnibox Bar di Bagian Bawah
-            BrowserOmnibox(
-                currentUrl = activeTabState.url,
-                isLoading = activeTabState.isLoading,
-                securityInfo = securityInfo,
-                blockedCount = activeTabState.blockedRequestsCount,
-                tabsCount = tabs.size,
-                isBookmarked = isBookmarked,
-                isIncognito = activeTabState.isIncognito,
-                onNavigate = { viewModel.loadInput(it) },
-                onReload = { viewModel.reload() },
-                onSecurityClick = { showSecurityDialog = true },
-                onTabsClick = { showTabOverview = true },
-                onBookmarkClick = {
-                    viewModel.toggleBookmark(activeTabState.url, activeTabState.title)
-                },
-                onHistoryClick = { showHistorySheet = true },
-                onSettingsClick = { showSettingsSheet = true }
-            )
+                if (activeTabState.url == "about:blank" || activeTabState.url.isEmpty()) {
+                    val totalBlockedAllTabs = remember(tabs) {
+                        tabs.sumOf { it.blockedRequestsCount }
+                    }
+                    ChromeNewTabPage(
+                        isIncognito = activeTabState.isIncognito,
+                        bookmarks = bookmarks,
+                        totalBlockedCount = totalBlockedAllTabs,
+                        onNavigate = { viewModel.loadInput(it) },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
         }
     }
 

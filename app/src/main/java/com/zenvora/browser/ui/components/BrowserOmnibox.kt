@@ -13,28 +13,36 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.DesktopWindows
+import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
@@ -57,10 +66,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zenvora.browser.data.model.SecurityInfo
 import com.zenvora.browser.data.model.SecurityStatus
-import com.zenvora.browser.ui.theme.AccentTeal
 import com.zenvora.browser.ui.theme.DarkOutline
 import com.zenvora.browser.ui.theme.DarkSurface
 import com.zenvora.browser.ui.theme.DarkSurfaceContainer
+import com.zenvora.browser.ui.theme.ElectricOrange
+import com.zenvora.browser.ui.theme.ElectricOrangeLight
+import com.zenvora.browser.ui.theme.OledBlack
 import com.zenvora.browser.ui.theme.SecurityGreen
 import com.zenvora.browser.ui.theme.SecurityRed
 import com.zenvora.browser.ui.theme.SecurityYellow
@@ -71,13 +82,21 @@ import com.zenvora.browser.ui.theme.TextSecondary
 fun BrowserOmnibox(
     currentUrl: String,
     isLoading: Boolean,
+    canGoForward: Boolean,
+    isDesktopMode: Boolean,
     securityInfo: SecurityInfo,
     blockedCount: Int,
     tabsCount: Int,
     isBookmarked: Boolean,
     isIncognito: Boolean = false,
     onNavigate: (String) -> Unit,
+    onHomeClick: () -> Unit,
     onReload: () -> Unit,
+    onForwardClick: () -> Unit,
+    onNewTabClick: () -> Unit,
+    onNewIncognitoTabClick: () -> Unit,
+    onFindInPageClick: () -> Unit,
+    onToggleDesktopMode: () -> Unit,
     onSecurityClick: () -> Unit,
     onTabsClick: () -> Unit,
     onBookmarkClick: () -> Unit,
@@ -85,8 +104,9 @@ fun BrowserOmnibox(
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var textFieldValue by remember { mutableStateOf(currentUrl) }
+    var textFieldValue by remember { mutableStateOf(if (currentUrl == "about:blank") "" else currentUrl) }
     var isFocused by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
 
     LaunchedEffect(currentUrl) {
@@ -95,28 +115,48 @@ fun BrowserOmnibox(
         }
     }
 
+    val activeAccent = if (isIncognito) ElectricOrangeLight else ElectricOrange
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(DarkSurface)
-            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .background(OledBlack)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.fillMaxWidth()
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .padding(horizontal = 8.dp)
         ) {
-            // Input Bar Container
-            val activeAccent = if (isIncognito) androidx.compose.ui.graphics.Color(0xFFBA68C8) else AccentTeal
+            // Tombol Home ala Chrome Android
+            IconButton(
+                onClick = onHomeClick,
+                modifier = Modifier.size(38.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Home,
+                    contentDescription = "Beranda",
+                    tint = if (currentUrl == "about:blank") ElectricOrange else TextPrimary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            // Pill Address Bar ala Chrome
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .weight(1f)
-                    .height(44.dp)
-                    .clip(RoundedCornerShape(22.dp))
+                    .height(42.dp)
+                    .clip(RoundedCornerShape(21.dp))
                     .background(DarkSurfaceContainer)
-                    .border(1.dp, if (isFocused) activeAccent else DarkOutline, RoundedCornerShape(22.dp))
-                    .padding(horizontal = 10.dp)
+                    .border(
+                        width = if (isFocused) 1.5.dp else 1.dp,
+                        color = if (isFocused) activeAccent else DarkOutline,
+                        shape = RoundedCornerShape(21.dp)
+                    )
+                    .padding(horizontal = 12.dp)
             ) {
                 if (isIncognito) {
                     Icon(
@@ -128,30 +168,31 @@ fun BrowserOmnibox(
                     Spacer(modifier = Modifier.width(6.dp))
                 }
 
-                // Security Icon
-                val securityIcon = when (securityInfo.status) {
-                    SecurityStatus.SECURE -> Icons.Filled.Lock to SecurityGreen
-                    SecurityStatus.INSECURE -> Icons.Filled.Warning to SecurityRed
-                    SecurityStatus.INTERNAL -> Icons.Filled.Security to SecurityYellow
-                    SecurityStatus.UNKNOWN -> Icons.Filled.Lock to TextSecondary
+                // Ikon Gembok / Search ala Chrome
+                val (statusIcon, statusTint) = when {
+                    currentUrl == "about:blank" -> Icons.Filled.Search to ElectricOrange
+                    securityInfo.status == SecurityStatus.SECURE -> Icons.Filled.Lock to SecurityGreen
+                    securityInfo.status == SecurityStatus.INSECURE -> Icons.Filled.Warning to SecurityRed
+                    securityInfo.status == SecurityStatus.INTERNAL -> Icons.Filled.Security to SecurityYellow
+                    else -> Icons.Filled.Lock to TextSecondary
                 }
 
                 Icon(
-                    imageVector = securityIcon.first,
-                    contentDescription = "Status Keamanan",
-                    tint = securityIcon.second,
+                    imageVector = statusIcon,
+                    contentDescription = "Info Situs",
+                    tint = statusTint,
                     modifier = Modifier
-                        .size(18.dp)
-                        .clickable(onClick = onSecurityClick)
+                        .size(16.dp)
+                        .clickable { onSecurityClick() }
                 )
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // BasicTextField for URL / Search
+                // Input URL / Kata Kunci
                 Box(modifier = Modifier.weight(1f)) {
                     if (textFieldValue.isEmpty() && !isFocused) {
                         Text(
-                            text = "Ketik URL atau cari web...",
+                            text = "Telusuri atau ketik URL",
                             style = TextStyle(color = TextSecondary, fontSize = 14.sp),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -167,7 +208,7 @@ fun BrowserOmnibox(
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Normal
                         ),
-                        cursorBrush = SolidColor(AccentTeal),
+                        cursorBrush = SolidColor(ElectricOrange),
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Uri,
                             imeAction = ImeAction.Go
@@ -189,7 +230,36 @@ fun BrowserOmnibox(
                     )
                 }
 
-                // Clear or Reload Button
+                // Badge jumlah iklan diblokir di dalam kanan pill (ringkas & jelas)
+                if (!isFocused && blockedCount > 0 && currentUrl != "about:blank") {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(ElectricOrange.copy(alpha = 0.18f))
+                            .clickable { onSecurityClick() }
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Shield,
+                            contentDescription = "Adblock",
+                            tint = ElectricOrange,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = if (blockedCount > 99) "99+" else blockedCount.toString(),
+                            style = TextStyle(
+                                color = ElectricOrange,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+
+                // Tombol Hapus saat mengetik
                 if (isFocused && textFieldValue.isNotEmpty()) {
                     IconButton(
                         onClick = { textFieldValue = "" },
@@ -197,113 +267,212 @@ fun BrowserOmnibox(
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Clear,
-                            contentDescription = "Hapus Teks",
+                            contentDescription = "Hapus",
                             tint = TextSecondary,
                             modifier = Modifier.size(16.dp)
                         )
                     }
-                } else {
-                    IconButton(
-                        onClick = onReload,
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Refresh,
-                            contentDescription = "Muat Ulang",
-                            tint = TextSecondary,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
                 }
             }
 
-            // Shield / Adblock Counter Badge
-            BadgedBox(
-                badge = {
-                    if (blockedCount > 0) {
-                        Badge(
-                            containerColor = AccentTeal,
-                            contentColor = DarkSurface
-                        ) {
-                            Text(
-                                text = if (blockedCount > 99) "99+" else blockedCount.toString(),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-            ) {
-                IconButton(
-                    onClick = onSecurityClick,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Shield,
-                        contentDescription = "Adblock Tracker Shield",
-                        tint = if (blockedCount > 0) AccentTeal else TextSecondary,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-
-            // Bookmark Toggle
-            IconButton(
-                onClick = onBookmarkClick,
-                modifier = Modifier.size(36.dp)
-            ) {
-                Icon(
-                    imageVector = if (isBookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
-                    contentDescription = "Bookmark",
-                    tint = if (isBookmarked) AccentTeal else TextSecondary,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            // History Button
-            IconButton(
-                onClick = onHistoryClick,
-                modifier = Modifier.size(36.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.History,
-                    contentDescription = "Histori & Bookmark",
-                    tint = TextSecondary,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            // Tabs Counter Button
+            // Tombol Tab Counter Kotak ala Chrome
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .border(1.5.dp, TextSecondary, RoundedCornerShape(6.dp))
+                    .size(38.dp)
                     .clickable(onClick = onTabsClick)
             ) {
-                Text(
-                    text = tabsCount.toString(),
-                    style = TextStyle(
-                        color = TextPrimary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .border(1.8.dp, if (isIncognito) ElectricOrangeLight else ElectricOrange, RoundedCornerShape(6.dp))
+                ) {
+                    Text(
+                        text = if (tabsCount > 99) ":D" else tabsCount.toString(),
+                        style = TextStyle(
+                            color = TextPrimary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
                     )
-                )
+                }
             }
 
-            // Settings Button
-            IconButton(
-                onClick = onSettingsClick,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Settings,
-                    contentDescription = "Pengaturan",
-                    tint = TextSecondary,
-                    modifier = Modifier.size(20.dp)
-                )
+            // Menu Titik Tiga (⋮) ala Chrome Android
+            Box {
+                IconButton(
+                    onClick = { showOverflowMenu = true },
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.MoreVert,
+                        contentDescription = "Menu Utama",
+                        tint = TextPrimary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = showOverflowMenu,
+                    onDismissRequest = { showOverflowMenu = false },
+                    modifier = Modifier
+                        .width(250.dp)
+                        .background(DarkSurface)
+                        .border(1.dp, DarkOutline, RoundedCornerShape(8.dp))
+                ) {
+                    // Baris Action Cepat Atas ala Chrome (Maju, Bookmark, Reload, Info)
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp)
+                    ) {
+                        IconButton(
+                            onClick = {
+                                showOverflowMenu = false
+                                onForwardClick()
+                            },
+                            enabled = canGoForward
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.ArrowForward,
+                                contentDescription = "Maju",
+                                tint = if (canGoForward) TextPrimary else TextSecondary.copy(alpha = 0.35f)
+                            )
+                        }
+
+                        IconButton(
+                            onClick = {
+                                showOverflowMenu = false
+                                onBookmarkClick()
+                            }
+                        ) {
+                            Icon(
+                                imageVector = if (isBookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                                contentDescription = "Simpan Bookmark",
+                                tint = if (isBookmarked) ElectricOrange else TextPrimary
+                            )
+                        }
+
+                        IconButton(
+                            onClick = {
+                                showOverflowMenu = false
+                                onReload()
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = "Muat Ulang",
+                                tint = TextPrimary
+                            )
+                        }
+
+                        IconButton(
+                            onClick = {
+                                showOverflowMenu = false
+                                onSecurityClick()
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Shield,
+                                contentDescription = "Info Keamanan",
+                                tint = ElectricOrange
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = DarkOutline)
+
+                    DropdownMenuItem(
+                        text = { Text("Tab baru", color = TextPrimary) },
+                        leadingIcon = {
+                            Icon(Icons.Filled.Add, contentDescription = null, tint = ElectricOrange)
+                        },
+                        onClick = {
+                            showOverflowMenu = false
+                            onNewTabClick()
+                        }
+                    )
+
+                    DropdownMenuItem(
+                        text = { Text("Tab Samaran baru", color = TextPrimary) },
+                        leadingIcon = {
+                            Icon(Icons.Filled.VisibilityOff, contentDescription = null, tint = ElectricOrangeLight)
+                        },
+                        onClick = {
+                            showOverflowMenu = false
+                            onNewIncognitoTabClick()
+                        }
+                    )
+
+                    HorizontalDivider(color = DarkOutline)
+
+                    DropdownMenuItem(
+                        text = { Text("Histori & Bookmark", color = TextPrimary) },
+                        leadingIcon = {
+                            Icon(Icons.Filled.History, contentDescription = null, tint = TextSecondary)
+                        },
+                        onClick = {
+                            showOverflowMenu = false
+                            onHistoryClick()
+                        }
+                    )
+
+                    DropdownMenuItem(
+                        text = { Text("Cari di halaman", color = TextPrimary) },
+                        leadingIcon = {
+                            Icon(Icons.Filled.FindInPage, contentDescription = null, tint = TextSecondary)
+                        },
+                        onClick = {
+                            showOverflowMenu = false
+                            onFindInPageClick()
+                        }
+                    )
+
+                    DropdownMenuItem(
+                        text = { Text("Situs desktop", color = TextPrimary) },
+                        leadingIcon = {
+                            Icon(Icons.Filled.DesktopWindows, contentDescription = null, tint = TextSecondary)
+                        },
+                        trailingIcon = {
+                            Checkbox(
+                                checked = isDesktopMode,
+                                onCheckedChange = null,
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = ElectricOrange,
+                                    checkmarkColor = OledBlack
+                                )
+                            )
+                        },
+                        onClick = {
+                            showOverflowMenu = false
+                            onToggleDesktopMode()
+                        }
+                    )
+
+                    HorizontalDivider(color = DarkOutline)
+
+                    DropdownMenuItem(
+                        text = { Text("Setelan", color = TextPrimary) },
+                        leadingIcon = {
+                            Icon(Icons.Filled.Settings, contentDescription = null, tint = ElectricOrange)
+                        },
+                        onClick = {
+                            showOverflowMenu = false
+                            onSettingsClick()
+                        }
+                    )
+                }
             }
         }
+
+        // Garis aksen tipis pemisah antara Top Bar dan konten web
+        HorizontalDivider(
+            thickness = 1.dp,
+            color = DarkOutline
+        )
     }
 }

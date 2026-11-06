@@ -1,6 +1,8 @@
 package com.zenvora.browser.core.engine
 
+import android.app.Application
 import android.content.Context
+import android.os.Build
 import org.mozilla.geckoview.ContentBlocking
 import org.mozilla.geckoview.GeckoRuntime
 import org.mozilla.geckoview.GeckoRuntimeSettings
@@ -10,6 +12,12 @@ object GeckoRuntimeManager {
     private var runtime: GeckoRuntime? = null
 
     fun getRuntime(context: Context): GeckoRuntime {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val processName = Application.getProcessName()
+            check(!processName.contains(":")) {
+                "GeckoRuntime hanya boleh diinisialisasi di proses utama, bukan di child process ($processName)"
+            }
+        }
         return runtime ?: synchronized(this) {
             runtime ?: createRuntime(context.applicationContext).also {
                 runtime = it

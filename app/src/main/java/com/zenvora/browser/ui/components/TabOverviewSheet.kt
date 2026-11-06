@@ -47,8 +47,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.zenvora.browser.data.model.BrowserTab
 import com.zenvora.browser.ui.theme.AccentTeal
+import com.zenvora.browser.ui.theme.ElectricOrangeLight
 
-val IncognitoPurple = Color(0xFFBA68C8)
+val IncognitoPurple = ElectricOrangeLight
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
