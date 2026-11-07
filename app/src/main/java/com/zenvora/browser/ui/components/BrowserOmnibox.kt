@@ -1,8 +1,17 @@
 package com.zenvora.browser.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,8 +37,10 @@ import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.NorthWest
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
@@ -58,7 +69,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -66,6 +80,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.zenvora.browser.data.local.entity.BookmarkEntity
+import com.zenvora.browser.data.local.entity.HistoryEntity
 import com.zenvora.browser.data.model.SecurityInfo
 import com.zenvora.browser.data.model.SecurityStatus
 import com.zenvora.browser.ui.theme.DarkOutline
@@ -81,6 +97,12 @@ import com.zenvora.browser.ui.theme.SecurityYellow
 import com.zenvora.browser.ui.theme.TextPrimary
 import com.zenvora.browser.ui.theme.TextSecondary
 
+private data class OmniboxSuggestionItem(
+    val title: String,
+    val url: String,
+    val isBookmark: Boolean
+)
+
 @Composable
 fun BrowserOmnibox(
     currentUrl: String,
@@ -94,6 +116,8 @@ fun BrowserOmnibox(
     networkSpeedText: String,
     availableUpdateVersion: String? = null,
     isIncognito: Boolean = false,
+    historyList: List<HistoryEntity> = emptyList(),
+    bookmarkList: List<BookmarkEntity> = emptyList(),
     onNavigate: (String) -> Unit,
     onHomeClick: () -> Unit,
     onReload: () -> Unit,
@@ -101,6 +125,7 @@ fun BrowserOmnibox(
     onNewTabClick: () -> Unit,
     onNewIncognitoTabClick: () -> Unit,
     onExtensionsClick: () -> Unit,
+    onPasswordManagerClick: () -> Unit,
     onFindInPageClick: () -> Unit,
     onToggleDesktopMode: () -> Unit,
     onCheckUpdateClick: () -> Unit,
@@ -115,6 +140,7 @@ fun BrowserOmnibox(
     var isFocused by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
+    val haptic = LocalHapticFeedback.current
 
     LaunchedEffect(currentUrl) {
         if (!isFocused) {
@@ -124,10 +150,45 @@ fun BrowserOmnibox(
 
     val activeAccent = if (isIncognito) ElectricOrangeLight else ElectricOrange
 
+    // Hitung daftar saran riwayat & bookmark ala Google Chrome saat omnibox aktif
+    val suggestions = remember(isFocused, textFieldValue, currentUrl, historyList, bookmarkList) {
+        if (!isFocused) {
+            emptyList()
+        } else {
+            val rawQuery = textFieldValue.trim()
+            val isUneditedCurrentUrl = rawQuery.isEmpty() || rawQuery.equals(currentUrl, ignoreCase = true)
+            val combined = buildList {
+                bookmarkList.forEach { b ->
+                    add(OmniboxSuggestionItem(title = b.title.ifBlank { b.url }, url = b.url, isBookmark = true))
+                }
+                historyList.forEach { h ->
+                    add(OmniboxSuggestionItem(title = h.title.ifBlank { h.url }, url = h.url, isBookmark = false))
+                }
+            }.distinctBy { it.url }
+
+            if (isUneditedCurrentUrl) {
+                combined.take(6)
+            } else {
+                combined.filter {
+                    it.title.contains(rawQuery, ignoreCase = true) ||
+                        it.url.contains(rawQuery, ignoreCase = true)
+                }.take(6)
+            }
+        }
+    }
+
+    val tabBtnInteraction = remember { MutableInteractionSource() }
+    val isTabPressed by tabBtnInteraction.collectIsPressedAsState()
+    val tabScale by animateFloatAsState(
+        targetValue = if (isTabPressed) 0.88f else 1f,
+        label = "tabCounterScale"
+    )
+
     Column(
         modifier = modifier
             .fillMaxWidth()
             .background(OledBlack)
+            .animateContentSize()
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -137,9 +198,13 @@ fun BrowserOmnibox(
                 .height(56.dp)
                 .padding(horizontal = 8.dp)
         ) {
-            // Tombol Home ala Chrome Android
+            // Tombol Home ala Chrome Android dengan Haptic Feedback
             IconButton(
-                onClick = onHomeClick,
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    focusManager.clearFocus()
+                    onHomeClick()
+                },
                 modifier = Modifier.size(38.dp)
             ) {
                 Icon(
@@ -176,7 +241,7 @@ fun BrowserOmnibox(
                 }
 
                 val (statusIcon, statusTint) = when {
-                    currentUrl == "about:blank" -> Icons.Filled.Search to ElectricOrange
+                    currentUrl == "about:blank" || isFocused -> Icons.Filled.Search to ElectricOrange
                     securityInfo.status == SecurityStatus.SECURE -> Icons.Filled.Lock to SecurityGreen
                     securityInfo.status == SecurityStatus.INSECURE -> Icons.Filled.Warning to SecurityRed
                     securityInfo.status == SecurityStatus.INTERNAL -> Icons.Filled.Security to SecurityYellow
@@ -189,15 +254,18 @@ fun BrowserOmnibox(
                     tint = statusTint,
                     modifier = Modifier
                         .size(16.dp)
-                        .clickable { onSecurityClick() }
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onSecurityClick()
+                        }
                 )
 
                 Spacer(modifier = Modifier.width(8.dp))
 
                 Box(modifier = Modifier.weight(1f)) {
-                    if (textFieldValue.isEmpty() && !isFocused) {
+                    if (textFieldValue.isEmpty()) {
                         Text(
-                            text = "Telusuri atau ketik alamat web",
+                            text = "Telusuri atau ketik alamat / IP",
                             style = TextStyle(color = TextSecondary, fontSize = 14.sp),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -220,6 +288,7 @@ fun BrowserOmnibox(
                         ),
                         keyboardActions = KeyboardActions(
                             onGo = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 focusManager.clearFocus()
                                 onNavigate(textFieldValue)
                             }
@@ -228,8 +297,11 @@ fun BrowserOmnibox(
                             .fillMaxWidth()
                             .onFocusChanged { focusState ->
                                 isFocused = focusState.isFocused
-                                if (focusState.isFocused && textFieldValue == "about:blank") {
-                                    textFieldValue = ""
+                                if (focusState.isFocused) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    if (textFieldValue == "about:blank") {
+                                        textFieldValue = ""
+                                    }
                                 }
                             }
                     )
@@ -242,7 +314,10 @@ fun BrowserOmnibox(
                         tint = ElectricOrange,
                         modifier = Modifier
                             .size(14.dp)
-                            .clickable { onToggleDesktopMode() }
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onToggleDesktopMode()
+                            }
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                 }
@@ -254,7 +329,10 @@ fun BrowserOmnibox(
                             .clip(RoundedCornerShape(10.dp))
                             .background(DarkSurfaceVariant)
                             .border(1.dp, ElectricOrange, RoundedCornerShape(10.dp))
-                            .clickable { onSecurityClick() }
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onSecurityClick()
+                            }
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Icon(
@@ -278,7 +356,10 @@ fun BrowserOmnibox(
 
                 if (isFocused && textFieldValue.isNotEmpty()) {
                     IconButton(
-                        onClick = { textFieldValue = "" },
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            textFieldValue = ""
+                        },
                         modifier = Modifier.size(24.dp)
                     ) {
                         Icon(
@@ -291,12 +372,24 @@ fun BrowserOmnibox(
                 }
             }
 
-            // Tombol Tab Counter Kotak ala Chrome
+            // Tombol Tab Counter Kotak ala Chrome dengan Micro-Interaction
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .size(38.dp)
-                    .clickable(onClick = onTabsClick)
+                    .graphicsLayer {
+                        scaleX = tabScale
+                        scaleY = tabScale
+                    }
+                    .clickable(
+                        interactionSource = tabBtnInteraction,
+                        indication = null,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            focusManager.clearFocus()
+                            onTabsClick()
+                        }
+                    )
             ) {
                 Box(
                     contentAlignment = Alignment.Center,
@@ -321,6 +414,7 @@ fun BrowserOmnibox(
             Box {
                 IconButton(
                     onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         focusManager.clearFocus()
                         showOverflowMenu = true
                     },
@@ -352,7 +446,7 @@ fun BrowserOmnibox(
                     tonalElevation = 0.dp,
                     shadowElevation = 8.dp,
                     modifier = Modifier
-                        .width(265.dp)
+                        .width(268.dp)
                         .background(DarkSurface)
                         .border(1.dp, DarkOutline, RoundedCornerShape(12.dp))
                 ) {
@@ -365,6 +459,7 @@ fun BrowserOmnibox(
                     ) {
                         IconButton(
                             onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 showOverflowMenu = false
                                 onForwardClick()
                             },
@@ -379,6 +474,7 @@ fun BrowserOmnibox(
 
                         IconButton(
                             onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 showOverflowMenu = false
                                 onBookmarkClick()
                             }
@@ -392,6 +488,7 @@ fun BrowserOmnibox(
 
                         IconButton(
                             onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 showOverflowMenu = false
                                 onReload()
                             }
@@ -405,6 +502,7 @@ fun BrowserOmnibox(
 
                         IconButton(
                             onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 showOverflowMenu = false
                                 onSecurityClick()
                             }
@@ -425,6 +523,7 @@ fun BrowserOmnibox(
                             Icon(Icons.Filled.Add, contentDescription = null, tint = ElectricOrange)
                         },
                         onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             showOverflowMenu = false
                             onNewTabClick()
                         }
@@ -436,6 +535,7 @@ fun BrowserOmnibox(
                             Icon(Icons.Filled.VisibilityOff, contentDescription = null, tint = ElectricOrangeLight)
                         },
                         onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             showOverflowMenu = false
                             onNewIncognitoTabClick()
                         }
@@ -449,6 +549,7 @@ fun BrowserOmnibox(
                             Icon(Icons.Filled.History, contentDescription = null, tint = TextSecondary)
                         },
                         onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             showOverflowMenu = false
                             onHistoryClick()
                         }
@@ -457,9 +558,29 @@ fun BrowserOmnibox(
                     DropdownMenuItem(
                         text = {
                             Column {
+                                Text("Pengelola Sandi", color = TextPrimary)
+                                Text(
+                                    text = "Simpan & isi otomatis akun web",
+                                    style = TextStyle(color = TextSecondary, fontSize = 11.sp)
+                                )
+                            }
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Filled.Key, contentDescription = null, tint = ElectricOrange)
+                        },
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            showOverflowMenu = false
+                            onPasswordManagerClick()
+                        }
+                    )
+
+                    DropdownMenuItem(
+                        text = {
+                            Column {
                                 Text("Ekstensi & Add-on Store", color = TextPrimary)
                                 Text(
-                                    text = "uBlock Origin, Dark Reader & Plugin",
+                                    text = "uBlock Origin, Claude AI & Plugin",
                                     style = TextStyle(color = ElectricOrange, fontSize = 11.sp)
                                 )
                             }
@@ -468,6 +589,7 @@ fun BrowserOmnibox(
                             Icon(Icons.Filled.Extension, contentDescription = null, tint = ElectricOrange)
                         },
                         onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             showOverflowMenu = false
                             onExtensionsClick()
                         }
@@ -479,6 +601,7 @@ fun BrowserOmnibox(
                             Icon(Icons.Filled.FindInPage, contentDescription = null, tint = TextSecondary)
                         },
                         onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             showOverflowMenu = false
                             onFindInPageClick()
                         }
@@ -505,6 +628,7 @@ fun BrowserOmnibox(
                             )
                         },
                         onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             showOverflowMenu = false
                             onToggleDesktopMode()
                         }
@@ -542,6 +666,7 @@ fun BrowserOmnibox(
                             )
                         },
                         onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             showOverflowMenu = false
                             onCheckUpdateClick()
                         }
@@ -569,10 +694,105 @@ fun BrowserOmnibox(
                             )
                         },
                         onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             showOverflowMenu = false
                             onSettingsClick()
                         }
                     )
+                }
+            }
+        }
+
+        // Panel Saran Riwayat & Bookmark ala Chrome saat Address Bar Difokuskan
+        AnimatedVisibility(
+            visible = isFocused && suggestions.isNotEmpty(),
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(DarkSurface)
+                    .border(width = 1.dp, color = DarkOutline)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = "Riwayat & Bookmark Terakhir",
+                        color = ElectricOrange,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Tutup",
+                        color = TextSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clickable {
+                            focusManager.clearFocus()
+                        }
+                    )
+                }
+                HorizontalDivider(color = DarkOutline)
+
+                suggestions.forEach { item ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                textFieldValue = item.url
+                                focusManager.clearFocus()
+                                onNavigate(item.url)
+                            }
+                            .padding(horizontal = 14.dp, vertical = 9.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (item.isBookmark) Icons.Filled.Bookmark else Icons.Filled.History,
+                            contentDescription = null,
+                            tint = if (item.isBookmark) ElectricOrange else TextSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = item.title,
+                                color = TextPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = item.url,
+                                color = ElectricOrange,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                textFieldValue = item.url
+                            },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.NorthWest,
+                                contentDescription = "Salin ke Kolom Pencarian",
+                                tint = TextSecondary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                    HorizontalDivider(color = DarkOutline.copy(alpha = 0.5f))
                 }
             }
         }

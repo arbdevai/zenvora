@@ -1,9 +1,9 @@
 # Project State & Session Memory
 
 ## Status Saat Ini
-- **Fase Aktif:** Fase 9: Real Edge-to-Edge Fullscreen, Android MediaSession Notification Player, Zero-Shift Smooth APZ Scroll & Mozilla WebExtension Store (v1.8.0)
-- **Versi Terakhir:** v1.8.0 (versionCode: 10800)
-- **Status CI Terakhir:** Siap Commit & Push v1.8.0 ke GitHub Actions
+- **Fase Aktif:** Fase 10: Local IP HTTP Resolver, Password Manager & Autofill, TopAppBar Content Spacing, Chrome Omnibox Suggestions, Real-Time 0-100% Extension Installer & Zenvora Store Integrator (v1.9.0)
+- **Versi Terakhir:** v1.9.0 (versionCode: 10900)
+- **Status CI Terakhir:** Siap Commit & Push v1.9.0 ke GitHub Actions
 - **Remote Repo:** https://github.com/arbdevai/zenvora
 
 ## Fitur yang Selesai Tuntas (Vertical Slices)
@@ -45,7 +45,14 @@
   2. Buat `BrowserMediaNotificationManager` yang menghubungkan `org.mozilla.geckoview.MediaSession.Delegate` ke Android `android.media.session.MediaSession` + `Notification.MediaStyle` sehingga pemutar video/musik tampil di Statusbar, Lockscreen, dan QS Panel Android.
   3. Hapus `.offset` pada `BrowserGeckoView` agar `SurfaceView` tetap 100% statis saat scroll (menggunakan overlay toolbar murni) dan aktifkan physics `apz.overscroll.enabled`, `apz.gtk.kinetic_scroll.enabled`, serta `general.smoothScroll` di `gecko-config.yaml`.
   4. Buat `ExtensionManager` & `ExtensionsSheet` (diakses dari menu titik 3) untuk menginstal 1-klik **uBlock Origin**, **Dark Reader**, **SponsorBlock**, **Tampermonkey**, **ClearURLs**, atau menginstal langsung file `.xpi` dari **Mozilla Add-ons Store (`addons.mozilla.org`)**.
+- *Catatan #21:* **IP Lokal 192.168.1.1 Kelempar ke HTTPS, Fitur Password Manager, Web Tertutup TopAppBar, Saran Riwayat Omnibox, Micro-Interactions, Progres Persen Instalasi Ekstensi & Tombol Pasang ke Zenvora di AMO Store (v1.8.0 -> Fixed v1.9.0)**:
+  1. Tambahkan `isLocalOrIpAddress` di `BrowserViewModel.resolveUrlOrQuery` untuk mendeteksi IPv4 (`192.168.1.1`, `10.x.x.x`, `127.0.0.1`), `localhost`, `.local`, `.lan`, dan `host:port` agar diarahkan ke `http://` (bukan `https://`), serta set `dom.security.https_first: false` & `dom.security.https_only_mode: false` di `GeckoRuntimeManager.kt`.
+  2. Buat `SavedLoginEntity`, `SavedLoginDao`, `ZenvoraDatabase` (v2), dan halaman layar penuh `PasswordManagerSheet` lengkap dengan chip autofill 1-klik di `BrowserScreen` + eksekutor JS `autofillCredentials` di `BrowserSession` + `IMPORTANT_FOR_AUTOFILL_YES` di `BrowserGeckoView`.
+  3. Hapus timer auto-hide 2.8 detik di `BrowserScreen` dan berikan `.padding(top = webTopPaddingDp)` pada kontainer konten web agar bagian atas halaman web tidak pernah tertutup oleh `BrowserOmnibox`.
+  4. Tambahkan panel dropdown **Riwayat & Bookmark Terakhir** ala Chrome di `BrowserOmnibox` saat kolom pencarian difokuskan (`isFocused == true`), lengkap dengan tombol panah `NorthWest` untuk menyalin URL ke kolom ketik dan micro-interactions (`animateFloatAsState` scale + `LocalHapticFeedback`).
+  5. Ubah `ExtensionManager.installFromUrl` agar mengunduh paket `.xpi` melalui `OkHttpClient` sambil memancarkan `installProgressPercent` (`0% - 100%`) secara real-time ke `ExtensionsSheet` dan banner mengambang di `BrowserScreen`.
+  6. Di `BrowserSession.kt` dan `content_shield.js`, gunakan Desktop Firefox 136 User-Agent khusus saat membuka `addons.mozilla.org`, ubah tombol `"Add to Firefox"` menjadi **"Pasang ke Zenvora"**, dan intercept klik pada tombol instal di fase capture untuk langsung memicu pengunduhan `.xpi` (termasuk ekstensi seperti **Claude Sidebar Free**).
 
 ## Tugas Aktif Selanjutnya (Next Actions)
 1. Verifikasi sintaksis `python3 /home/coder/.gemini/config/skills/android-compose-builder/scripts/verify_kotlin_syntax.py .` (0 hard errors).
-2. Commit dan push rilis `v1.8.0` ke `origin main` serta pantau workflow GitHub Actions hingga selesai.
+2. Commit dan push rilis `v1.9.0` ke `origin main` serta pantau workflow GitHub Actions hingga selesai.

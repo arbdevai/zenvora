@@ -5,7 +5,7 @@
   // - Anti-Adblock Defuser
   // - YouTube & Web Background Play Unlocker (Page Visibility Spoofer)
   // - Pop-Under & Click-Hijack Blocker
-  // - Clean Video Fullscreen Controller (Tanpa Merusak UI/Elemen YouTube atau Membuat Blank Saat Exit)
+  // - Clean Video Fullscreen Controller
   const defuserCode = `
     (function() {
       try {
@@ -45,7 +45,6 @@
         Object.defineProperty(window, 'blockAdBlock', { get: () => fakeInstance, set: () => {}, configurable: true });
 
         // B. YouTube & Streaming Background Play Unlocker (Page Visibility API Spoofer)
-        // Mencegah YouTube mem-pause video otomatis saat pindah aplikasi atau layar HP dimatikan
         Object.defineProperty(document, 'hidden', { get: () => false, configurable: true });
         Object.defineProperty(document, 'webkitHidden', { get: () => false, configurable: true });
         Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
@@ -58,7 +57,7 @@
           return null;
         };
 
-        // D. Cegah event visibilitychange (agar YouTube tidak pause di background) & cegah click-hijacking pop-under
+        // D. Cegah event visibilitychange & cegah click-hijacking pop-under
         const origAddEventListener = EventTarget.prototype.addEventListener;
         EventTarget.prototype.addEventListener = function(type, listener, options) {
           if (type === 'visibilitychange' || type === 'webkitvisibilitychange' || type === 'mozvisibilitychange') {
@@ -111,7 +110,126 @@
     script.remove();
   } catch (_) {}
 
-  // 2. Suntikkan Cosmetic CSS (WordPress Ad Plugins & Indo-Streaming Banners, Tanpa Mengganggu Layout Video / UI YouTube)
+  // 2. Integrasi Khusus Toko Ekstensi (addons.mozilla.org -> Zenvora Add-ons Store)
+  const isAmoStore = location.hostname.includes("addons.mozilla.org");
+  if (isAmoStore) {
+    const resolveAmoSlug = () => {
+      const match = location.pathname.match(/\/addon\/([^/?#]+)/i);
+      return match && match[1] ? match[1] : null;
+    };
+
+    const transformMozillaStoreForZenvora = () => {
+      try {
+        if (!document.getElementById("zenvora-amo-style")) {
+          const amoStyle = document.createElement("style");
+          amoStyle.id = "zenvora-amo-style";
+          amoStyle.textContent = `
+            .GetFirefoxButton,
+            .Notice-firefoxRequired,
+            .WrongPlatformWarning,
+            .FirefoxPromoBanner,
+            [class*="FirefoxPromo"],
+            [class*="WrongPlatformWarning"] {
+              display: none !important;
+            }
+            a.AMInstallButton-button,
+            button.AMInstallButton-button,
+            .InstallButtonWrapper a {
+              background-color: #FF6D00 !important;
+              background-image: none !important;
+              color: #000000 !important;
+              font-weight: 800 !important;
+              border-radius: 10px !important;
+              border: none !important;
+              pointer-events: auto !important;
+              opacity: 1 !important;
+              cursor: pointer !important;
+              box-shadow: 0 2px 10px rgba(255, 109, 0, 0.35) !important;
+            }
+          `;
+          (document.head || document.documentElement).appendChild(amoStyle);
+        }
+
+        const slug = resolveAmoSlug();
+        const fallbackXpiUrl = slug
+          ? "https://addons.mozilla.org/firefox/downloads/latest/" + slug + "/latest.xpi"
+          : null;
+
+        const buttons = document.querySelectorAll(
+          "a.AMInstallButton-button, button.AMInstallButton-button, .InstallButtonWrapper a, a.Button--action, a[href*='.xpi']"
+        );
+        for (let i = 0; i < buttons.length; i++) {
+          const btn = buttons[i];
+          btn.removeAttribute("disabled");
+          btn.classList.remove("AMInstallButton-button--disabled", "Button--disabled");
+
+          const currentHref = btn.getAttribute("href") || "";
+          if (fallbackXpiUrl && (!currentHref || currentHref.includes("mozilla.org/firefox/download") || currentHref === "#")) {
+            btn.setAttribute("href", fallbackXpiUrl);
+          }
+
+          const txt = (btn.textContent || "").trim();
+          if (
+            txt.includes("Firefox") ||
+            txt.includes("Tambahkan") ||
+            txt.includes("Add to") ||
+            txt.includes("Download file") ||
+            txt.includes("Unduh berkas")
+          ) {
+            btn.textContent = "Pasang ke Zenvora";
+          }
+        }
+
+        // Ubah judul halaman / header Firefox Add-ons menjadi Zenvora Add-ons
+        const headerTitle = document.querySelector(".Header-title, h1.HeroRecommendation-title");
+        if (headerTitle && headerTitle.textContent && headerTitle.textContent.includes("Firefox")) {
+          headerTitle.textContent = headerTitle.textContent.replace(/Firefox/g, "Zenvora");
+        }
+      } catch (_) {}
+    };
+
+    // Intercept klik tombol "Pasang ke Zenvora" / "Add to Firefox" di fase capture agar tidak diblokir script React AMO
+    document.addEventListener(
+      "click",
+      function(e) {
+        try {
+          const targetBtn = e.target
+            ? e.target.closest(
+                "a.AMInstallButton-button, button.AMInstallButton-button, .InstallButtonWrapper a, a[href*='.xpi'], a[href*='/firefox/downloads/']"
+              )
+            : null;
+          if (!targetBtn) return;
+
+          let xpiHref = targetBtn.getAttribute("href") || "";
+          const slug = resolveAmoSlug();
+          if ((!xpiHref.includes(".xpi") && !xpiHref.includes("/firefox/downloads/")) && slug) {
+            xpiHref = "https://addons.mozilla.org/firefox/downloads/latest/" + slug + "/latest.xpi";
+          }
+
+          if (xpiHref && (xpiHref.includes(".xpi") || xpiHref.includes("/firefox/downloads/"))) {
+            e.preventDefault();
+            e.stopPropagation();
+            e.stopImmediatePropagation();
+            targetBtn.textContent = "Memasang ke Zenvora...";
+            const absoluteXpi = xpiHref.startsWith("http")
+              ? xpiHref
+              : new URL(xpiHref, location.origin).href;
+            window.location.assign(absoluteXpi);
+          }
+        } catch (_) {}
+      },
+      true
+    );
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", transformMozillaStoreForZenvora, { once: true });
+    } else {
+      transformMozillaStoreForZenvora();
+    }
+    setInterval(transformMozillaStoreForZenvora, 500);
+  }
+
+  // 3. Suntikkan Cosmetic CSS (WordPress Ad Plugins & Indo-Streaming Banners, Tanpa Mengganggu Layout Video / UI YouTube)
   const injectCosmeticStyle = () => {
     if (document.getElementById("zenvora-stealth-css")) return;
     const style = document.createElement("style");
@@ -203,7 +321,7 @@
     injectCosmeticStyle();
   }
 
-  // 3. Pemindai DOM Dinamis (Brave-Style Procedural Filter untuk WordPress & Indo-Streaming)
+  // 4. Pemindai DOM Dinamis (Brave-Style Procedural Filter untuk WordPress & Indo-Streaming)
   const AD_HREF_PATTERNS = [
     "slot", "gacor", "maxwin", "togel", "sbobet", "pragmatic", "idnplay", "pkv",
     "judol", "bet88", "zeus88", "hoki88", "cuan88", "mahjong", "rtp", "popads",
@@ -214,12 +332,10 @@
 
   function cleanDomAndEnhanceVideo() {
     try {
-      // Hentikan pemindaian berat saat sedang memutar video fullscreen agar CPU/GPU 100% fokus ke 60fps video
       if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement) {
         return;
       }
 
-      // A. Pastikan semua iframe pemutar video mengizinkan fullscreen
       const iframes = document.querySelectorAll("iframe");
       for (let i = 0; i < iframes.length; i++) {
         const frame = iframes[i];
@@ -241,7 +357,6 @@
         }
       }
 
-      // B. Sembunyikan banner WordPress (gambar .gif/.webp dalam <a target="_blank">) & overlay klik transparan
       const elements = document.querySelectorAll("a[href], div[onclick], div[style*='z-index'], img[src*='.gif']");
       for (let i = 0; i < elements.length; i++) {
         const el = elements[i];
@@ -275,7 +390,6 @@
           continue;
         }
 
-        // Deteksi click-jacking overlay transparan di atas pemutar video (z-index tinggi tanpa teks)
         const styleAttr = (el.getAttribute("style") || "").toLowerCase();
         if (
           el.tagName === "DIV" &&
@@ -289,7 +403,6 @@
         }
       }
 
-      // C. Auto-Skip Video Ads (YouTube & HTML5 Pre-roll Ads)
       const skipButtons = document.querySelectorAll(
         ".ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .videoAdUiSkipButton, [class*='skip-ad'], [id*='skip-ad']"
       );

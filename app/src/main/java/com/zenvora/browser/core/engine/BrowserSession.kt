@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import org.json.JSONObject
 import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.ContentBlocking
 import org.mozilla.geckoview.GeckoResult
@@ -74,10 +75,16 @@ class BrowserSession(
         }
     }
 
-    private fun applyDesktopSettings(enabled: Boolean) {
+    private fun applyDesktopSettings(enabled: Boolean, targetUrl: String = _tabState.value.url) {
+        val isAmoStore = targetUrl.contains("addons.mozilla.org", ignoreCase = true)
         if (enabled) {
             geckoSession.settings.userAgentMode = GeckoSessionSettings.USER_AGENT_MODE_DESKTOP
             geckoSession.settings.viewportMode = GeckoSessionSettings.VIEWPORT_MODE_DESKTOP
+            geckoSession.settings.userAgentOverride = DESKTOP_USER_AGENT
+        } else if (isAmoStore) {
+            // Gunakan User-Agent Desktop Firefox 136 khusus di addons.mozilla.org agar semua ekstensi (termasuk Claude Sidebar Free) aktif dan tidak terkunci di HP
+            geckoSession.settings.userAgentMode = GeckoSessionSettings.USER_AGENT_MODE_DESKTOP
+            geckoSession.settings.viewportMode = GeckoSessionSettings.VIEWPORT_MODE_MOBILE
             geckoSession.settings.userAgentOverride = DESKTOP_USER_AGENT
         } else {
             geckoSession.settings.userAgentMode = GeckoSessionSettings.USER_AGENT_MODE_MOBILE
@@ -121,7 +128,7 @@ class BrowserSession(
         }
         geckoSession.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(session: GeckoSession, url: String) {
-                applyDesktopSettings(desktopModeEnabled)
+                applyDesktopSettings(desktopModeEnabled, url)
                 _tabState.update {
                     it.copy(
                         url = url,
@@ -172,12 +179,15 @@ class BrowserSession(
                 session: GeckoSession,
                 request: GeckoSession.NavigationDelegate.LoadRequest
             ): GeckoResult<AllowOrDeny> {
-                applyDesktopSettings(desktopModeEnabled)
                 val targetUri = request.uri
+                applyDesktopSettings(desktopModeEnabled, targetUri)
 
-                // 0. Tangkap instalasi langsung file ekstensi .xpi dari Mozilla Add-ons Store (addons.mozilla.org)
+                // 0. Tangkap instalasi langsung file ekstensi .xpi dari Zenvora / Mozilla Add-ons Store
                 if (targetUri.startsWith("https://") &&
-                    (targetUri.endsWith(".xpi") || targetUri.contains(".xpi?"))
+                    (targetUri.endsWith(".xpi") ||
+                        targetUri.contains(".xpi?") ||
+                        targetUri.contains("addons.mozilla.org/firefox/downloads/") ||
+                        targetUri.contains("addons.mozilla.org/android/downloads/"))
                 ) {
                     onXpiInstallRequested?.invoke(targetUri)
                     return GeckoResult.fromValue(AllowOrDeny.DENY)
@@ -216,7 +226,6 @@ class BrowserSession(
                 session: GeckoSession,
                 uri: String
             ): GeckoResult<GeckoSession> {
-                // Blokir pop-up / pop-under window baru yang sering muncul saat klik video streaming
                 if (adblockEnabled) {
                     _tabState.update {
                         it.copy(blockedRequestsCount = it.blockedRequestsCount + 1)
@@ -305,9 +314,48 @@ class BrowserSession(
     }
 
     fun loadUri(uri: String) {
-        applyDesktopSettings(desktopModeEnabled)
+        applyDesktopSettings(desktopModeEnabled, uri)
         val normalized = rewriteMobileUrlForDesktop(uri)
         geckoSession.loadUri(normalized)
+    }
+
+    fun autofillCredentials(username: String, passwordValue: String) {
+        try {
+            val escapedUser = JSONObject.quote(username)
+            val escapedPass = JSONObject.quote(passwordValue)
+            val js = """
+                javascript:(function(){
+                  try {
+                    var setVal = function(el, val) {
+                      if (!el) return;
+                      var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value');
+                      if (setter && setter.set) {
+                        setter.set.call(el, val);
+                      } else {
+                        el.value = val;
+                      }
+                      el.dispatchEvent(new Event('input', { bubbles: true }));
+                      el.dispatchEvent(new Event('change', { bubbles: true }));
+                    };
+                    var passInputs = document.querySelectorAll('input[type="password"]');
+                    for (var i = 0; i < passInputs.length; i++) {
+                      setVal(passInputs[i], $escapedPass);
+                    }
+                    var userInputs = document.querySelectorAll('input[type="email"], input[type="text"], input[name*="user"], input[name*="login"], input[name*="email"], input[id*="user"], input[id*="login"]');
+                    for (var j = 0; j < userInputs.length; j++) {
+                      var inp = userInputs[j];
+                      if (inp.type !== 'hidden' && inp.offsetParent !== null) {
+                        setVal(inp, $escapedUser);
+                        break;
+                      }
+                    }
+                  } catch (e) {}
+                })();
+            """.trimIndent().replace("\n", " ")
+            geckoSession.loadUri(js)
+        } catch (_: Exception) {
+            // Abaikan jika gagal mengeksekusi script autofill
+        }
     }
 
     fun goBack(): Boolean {

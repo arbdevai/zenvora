@@ -101,8 +101,13 @@ object GeckoRuntimeManager {
               apz.gtk.kinetic_scroll.enabled: true
               general.smoothScroll: true
               apz.fling_min_velocity_threshold: "0.1"
+              dom.security.https_only_mode: false
+              dom.security.https_first: false
+              dom.security.https_first_pbm: false
               xpinstall.signatures.required: false
+              xpinstall.whitelist.required: false
               extensions.webextensions.RemoteSettings.disabled: true
+              extensions.webextensions.ExtensionStorageIDB.enabled: true
         """.trimIndent()
 
         configFile.writeText(yamlContent)

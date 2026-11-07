@@ -1,7 +1,11 @@
 package com.zenvora.browser.ui.components
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +29,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.Button
@@ -32,6 +37,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -45,6 +51,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -66,16 +75,19 @@ import com.zenvora.browser.ui.theme.TextSecondary
 fun ExtensionsSheet(
     installedExtensions: List<InstalledExtensionInfo>,
     installingAddonId: String?,
+    installProgressPercent: Int?,
     statusMessage: String?,
     onInstallRecommended: (RecommendedAddon) -> Unit,
     onInstallCustomXpiUrl: (String) -> Unit,
     onToggleExtension: (InstalledExtensionInfo, Boolean) -> Unit,
     onUninstallExtension: (InstalledExtensionInfo) -> Unit,
+    onOpenExtensionOptions: (String) -> Unit,
     onOpenMozillaStore: (String) -> Unit,
     onRefresh: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var customXpiUrl by remember { mutableStateOf("") }
+    val haptic = LocalHapticFeedback.current
 
     Column(
         modifier = modifier
@@ -105,7 +117,12 @@ fun ExtensionsSheet(
                 color = TextPrimary,
                 modifier = Modifier.weight(1f)
             )
-            IconButton(onClick = onRefresh) {
+            IconButton(
+                onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onRefresh()
+                }
+            ) {
                 Icon(
                     imageVector = Icons.Filled.Refresh,
                     contentDescription = "Segarkan Daftar Ekstensi",
@@ -122,10 +139,10 @@ fun ExtensionsSheet(
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 14.dp)
+                .animateContentSize()
         ) {
-            if (!statusMessage.isNullOrBlank()) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
+            if (!statusMessage.isNullOrBlank() || installProgressPercent != null) {
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 12.dp)
@@ -134,23 +151,57 @@ fun ExtensionsSheet(
                         .border(1.dp, ElectricOrange, RoundedCornerShape(10.dp))
                         .padding(horizontal = 12.dp, vertical = 10.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Shield,
-                        contentDescription = null,
-                        tint = ElectricOrange,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = statusMessage,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Medium
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Shield,
+                            contentDescription = null,
+                            tint = ElectricOrange,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = statusMessage ?: "Memasang ekstensi...",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (installProgressPercent != null) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "${installProgressPercent}%",
+                                color = ElectricOrange,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
+                    if (installProgressPercent != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = { (installProgressPercent.coerceIn(0, 100)) / 100f },
+                            color = ElectricOrange,
+                            trackColor = DarkOutline,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(5.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                        )
+                    }
                 }
             }
 
-            // Banner Buka Mozilla Add-ons Store Resmi
+            // Banner Buka Add-on Store Resmi dengan Micro-Interaction
+            val storeBtnInteraction = remember { MutableInteractionSource() }
+            val isStorePressed by storeBtnInteraction.collectIsPressedAsState()
+            val storeScale by animateFloatAsState(
+                targetValue = if (isStorePressed) 0.94f else 1f,
+                label = "storeBtnScale"
+            )
+
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
@@ -169,25 +220,33 @@ fun ExtensionsSheet(
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Mozilla Add-ons Store Resmi",
+                        text = "Zenvora Add-ons Store",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
                     )
                     Text(
-                        text = "Jelajahi ribuan plugin Firefox/Gecko & klik Add to Firefox untuk pasang langsung",
+                        text = "Jelajahi ribuan plugin & klik tombol Pasang ke Zenvora untuk instalasi langsung",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary
                     )
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(
-                    onClick = { onOpenMozillaStore(ExtensionManager.AMO_STORE_HOME_URL) },
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onOpenMozillaStore(ExtensionManager.AMO_STORE_HOME_URL)
+                    },
+                    interactionSource = storeBtnInteraction,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = ElectricOrange,
                         contentColor = OledBlack
                     ),
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.graphicsLayer {
+                        scaleX = storeScale
+                        scaleY = storeScale
+                    }
                 ) {
                     Text("Buka Store", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
@@ -251,9 +310,29 @@ fun ExtensionsSheet(
                             )
                         }
 
+                        if (!ext.isBuiltIn && !ext.optionsPageUrl.isNullOrBlank()) {
+                            IconButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onOpenExtensionOptions(ext.optionsPageUrl)
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Settings,
+                                    contentDescription = "Buka Opsi Ekstensi",
+                                    tint = ElectricOrange,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
                         if (!ext.isBuiltIn) {
                             IconButton(
-                                onClick = { onUninstallExtension(ext) },
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onUninstallExtension(ext)
+                                },
                                 modifier = Modifier.size(32.dp)
                             ) {
                                 Icon(
@@ -267,7 +346,10 @@ fun ExtensionsSheet(
 
                         Switch(
                             checked = ext.isEnabled,
-                            onCheckedChange = { checked -> onToggleExtension(ext, checked) },
+                            onCheckedChange = { checked ->
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                onToggleExtension(ext, checked)
+                            },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = OledBlack,
                                 checkedTrackColor = ElectricOrange,
@@ -302,6 +384,12 @@ fun ExtensionsSheet(
                         it.name.contains(addon.name, ignoreCase = true)
                 }
                 val isInstallingThis = installingAddonId == addon.id
+                val installBtnInteraction = remember { MutableInteractionSource() }
+                val isInstallPressed by installBtnInteraction.collectIsPressedAsState()
+                val installBtnScale by animateFloatAsState(
+                    targetValue = if (isInstallPressed) 0.93f else 1f,
+                    label = "installBtnScale"
+                )
 
                 Column(
                     modifier = Modifier
@@ -309,7 +397,11 @@ fun ExtensionsSheet(
                         .padding(bottom = 10.dp)
                         .clip(RoundedCornerShape(10.dp))
                         .background(DarkSurfaceContainer)
-                        .border(1.dp, DarkOutline, RoundedCornerShape(10.dp))
+                        .border(
+                            width = 1.dp,
+                            color = if (isInstallingThis) ElectricOrange else DarkOutline,
+                            shape = RoundedCornerShape(10.dp)
+                        )
                         .padding(12.dp)
                 ) {
                     Row(
@@ -355,16 +447,40 @@ fun ExtensionsSheet(
                                 )
                             }
                         } else if (isInstallingThis) {
-                            SkeletonBox(
+                            val pct = installProgressPercent ?: 15
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier
-                                    .width(88.dp)
-                                    .height(34.dp),
-                                shape = RoundedCornerShape(8.dp)
-                            )
+                                    .width(96.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(DarkSurfaceVariant)
+                                    .border(1.dp, ElectricOrange, RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = "Proses $pct%",
+                                    color = ElectricOrange,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                LinearProgressIndicator(
+                                    progress = { (pct.coerceIn(0, 100)) / 100f },
+                                    color = ElectricOrange,
+                                    trackColor = DarkOutline,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                )
+                            }
                         } else {
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 IconButton(
-                                    onClick = { onOpenMozillaStore(addon.storePageUrl) },
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        onOpenMozillaStore(addon.storePageUrl)
+                                    },
                                     modifier = Modifier
                                         .size(34.dp)
                                         .clip(RoundedCornerShape(8.dp))
@@ -378,12 +494,20 @@ fun ExtensionsSheet(
                                     )
                                 }
                                 Button(
-                                    onClick = { onInstallRecommended(addon) },
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onInstallRecommended(addon)
+                                    },
+                                    interactionSource = installBtnInteraction,
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = ElectricOrange,
                                         contentColor = OledBlack
                                     ),
-                                    shape = RoundedCornerShape(8.dp)
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.graphicsLayer {
+                                        scaleX = installBtnScale
+                                        scaleY = installBtnScale
+                                    }
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.Download,
@@ -442,6 +566,7 @@ fun ExtensionsSheet(
                 Button(
                     onClick = {
                         if (customXpiUrl.isNotBlank()) {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             onInstallCustomXpiUrl(customXpiUrl)
                             customXpiUrl = ""
                         }

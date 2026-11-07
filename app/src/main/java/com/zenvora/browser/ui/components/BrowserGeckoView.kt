@@ -1,5 +1,7 @@
 package com.zenvora.browser.ui.components
 
+import android.os.Build
+import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,6 +34,9 @@ fun BrowserGeckoView(
     val geckoView = remember {
         GeckoView(context).apply {
             setBackgroundColor(android.graphics.Color.BLACK)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
+            }
         }
     }
 

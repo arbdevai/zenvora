@@ -24,8 +24,10 @@ import com.zenvora.browser.data.local.PreferencesRepository
 import com.zenvora.browser.data.local.ZenvoraDatabase
 import com.zenvora.browser.data.local.entity.BookmarkEntity
 import com.zenvora.browser.data.local.entity.HistoryEntity
+import com.zenvora.browser.data.local.entity.SavedLoginEntity
 import com.zenvora.browser.data.model.BrowserTab
 import com.zenvora.browser.data.model.SecurityInfo
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -37,6 +39,7 @@ import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.net.URI
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.UUID
@@ -58,9 +61,10 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     val downloadManager = BrowserDownloadManager(context)
     val downloads: StateFlow<List<DownloadItem>> = downloadManager.downloads
 
-    val extensionManager = ExtensionManager(runtime)
+    val extensionManager = ExtensionManager(context, runtime, viewModelScope)
     val installedExtensions: StateFlow<List<InstalledExtensionInfo>> = extensionManager.installedExtensions
     val installingAddonId: StateFlow<String?> = extensionManager.installingAddonId
+    val installProgressPercent: StateFlow<Int?> = extensionManager.installProgressPercent
     val extensionStatusMessage: StateFlow<String?> = extensionManager.statusMessage
 
     private val mediaNotificationManager = BrowserMediaNotificationManager(context)
@@ -92,6 +96,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val bookmarks: StateFlow<List<BookmarkEntity>> = database.bookmarkDao().getAllBookmarks()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val savedLogins: StateFlow<List<SavedLoginEntity>> = database.savedLoginDao().getAllSavedLogins()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val sessionsMap = mutableMapOf<String, BrowserSession>()
@@ -401,13 +408,52 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private fun resolveUrlOrQuery(input: String): String {
         val lower = input.lowercase()
         return when {
-            lower.startsWith("http://") || lower.startsWith("https://") || lower.startsWith("about:") -> input
+            lower.startsWith("http://") ||
+                lower.startsWith("https://") ||
+                lower.startsWith("about:") ||
+                lower.startsWith("moz-extension://") ||
+                lower.startsWith("file://") -> input
+            isLocalOrIpAddress(input) -> "http://$input"
             input.contains(".") && !input.contains(" ") -> "https://$input"
             else -> {
                 val encodedQuery = URLEncoder.encode(input, StandardCharsets.UTF_8.toString())
                 "${searchEngineUrl.value}$encodedQuery"
             }
         }
+    }
+
+    private fun isLocalOrIpAddress(rawInput: String): Boolean {
+        if (rawInput.contains(" ")) return false
+        val hostPort = rawInput.substringBefore('/').substringBefore('?').trim()
+        val host = hostPort.substringBefore(':').lowercase()
+        val portPart = if (hostPort.contains(':')) hostPort.substringAfter(':') else ""
+
+        // Deteksi alamat IPv4 (contoh: 192.168.1.1, 10.0.0.1, 172.16.0.1, 127.0.0.1)
+        val ipv4Parts = host.split('.')
+        if (ipv4Parts.size == 4 && ipv4Parts.all { part ->
+                val num = part.toIntOrNull()
+                num != null && num in 0..255
+            }
+        ) {
+            return true
+        }
+
+        // Deteksi host jaringan lokal / router / custom port
+        if (host == "localhost" ||
+            host.endsWith(".local") ||
+            host.endsWith(".lan") ||
+            host.endsWith(".home") ||
+            host.endsWith(".internal") ||
+            host.endsWith(".router")
+        ) {
+            return true
+        }
+
+        if (portPart.isNotEmpty() && portPart.all { it.isDigit() } && portPart != "443") {
+            return true
+        }
+
+        return false
     }
 
     fun goBack(): Boolean {
@@ -630,6 +676,58 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun refreshExtensions() {
         extensionManager.refreshInstalledExtensions()
+    }
+
+    fun clearExtensionStatusMessage() {
+        extensionManager.clearStatusMessage()
+    }
+
+    fun addSavedLogin(siteInput: String, username: String, passwordValue: String) {
+        viewModelScope.launch {
+            val normalizedUrl = resolveUrlOrQuery(siteInput.trim())
+            val extractedHost = try {
+                URI(normalizedUrl).host?.removePrefix("www.") ?: siteInput.trim()
+            } catch (_: Exception) {
+                siteInput.trim()
+            }
+            val existing = database.savedLoginDao().findLoginByHostAndUser(extractedHost, username.trim())
+            if (existing != null) {
+                database.savedLoginDao().insertSavedLogin(
+                    existing.copy(
+                        siteUrl = normalizedUrl,
+                        passwordValue = passwordValue,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            } else {
+                database.savedLoginDao().insertSavedLogin(
+                    SavedLoginEntity(
+                        host = extractedHost,
+                        siteUrl = normalizedUrl,
+                        username = username.trim(),
+                        passwordValue = passwordValue
+                    )
+                )
+            }
+        }
+    }
+
+    fun deleteSavedLogin(id: Long) {
+        viewModelScope.launch {
+            database.savedLoginDao().deleteSavedLoginById(id)
+        }
+    }
+
+    fun openAndAutofillLogin(login: SavedLoginEntity) {
+        loadInput(login.siteUrl)
+        viewModelScope.launch {
+            delay(1500L)
+            getActiveSession()?.autofillCredentials(login.username, login.passwordValue)
+        }
+    }
+
+    fun autofillLoginOnCurrentPage(login: SavedLoginEntity) {
+        getActiveSession()?.autofillCredentials(login.username, login.passwordValue)
     }
 
     override fun onCleared() {

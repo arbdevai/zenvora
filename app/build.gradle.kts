@@ -14,8 +14,8 @@ android {
         applicationId = "com.zenvora.browser"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10800
-        versionName = "1.8.0"
+        versionCode = 10900
+        versionName = "1.9.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

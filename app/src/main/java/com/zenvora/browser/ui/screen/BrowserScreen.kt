@@ -24,14 +24,23 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -41,17 +50,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -67,6 +80,7 @@ import com.zenvora.browser.ui.components.ChromeNewTabPage
 import com.zenvora.browser.ui.components.ExtensionsSheet
 import com.zenvora.browser.ui.components.FindInPageBar
 import com.zenvora.browser.ui.components.HistoryBookmarkSheet
+import com.zenvora.browser.ui.components.PasswordManagerSheet
 import com.zenvora.browser.ui.components.SecurityDetailDialog
 import com.zenvora.browser.ui.components.SettingsSheet
 import com.zenvora.browser.ui.components.TabOverviewSheet
@@ -74,17 +88,21 @@ import com.zenvora.browser.ui.components.UpdateDialog
 import com.zenvora.browser.ui.theme.DarkOutline
 import com.zenvora.browser.ui.theme.DarkSurface
 import com.zenvora.browser.ui.theme.DarkSurfaceContainer
+import com.zenvora.browser.ui.theme.DarkSurfaceVariant
 import com.zenvora.browser.ui.theme.ElectricOrange
 import com.zenvora.browser.ui.theme.OledBlack
 import com.zenvora.browser.ui.theme.TextPrimary
+import com.zenvora.browser.ui.theme.TextSecondary
 import com.zenvora.browser.ui.viewmodel.BrowserViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private enum class ActiveFullScreenPage {
     BROWSER,
     TABS,
     HISTORY_BOOKMARKS,
+    PASSWORDS,
     EXTENSIONS,
     SETTINGS,
     SECURITY
@@ -111,6 +129,7 @@ fun BrowserScreen(
     val securityInfo by viewModel.securityInfo.collectAsStateWithLifecycle()
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
     val historyEntries by viewModel.historyEntries.collectAsStateWithLifecycle()
+    val savedLogins by viewModel.savedLogins.collectAsStateWithLifecycle()
     val isAdblockEnabled by viewModel.isAdblockEnabled.collectAsStateWithLifecycle()
     val isStrictPrivacy by viewModel.isStrictPrivacy.collectAsStateWithLifecycle()
     val isBackgroundAudioEnabled by viewModel.isBackgroundAudioEnabled.collectAsStateWithLifecycle()
@@ -121,11 +140,16 @@ fun BrowserScreen(
     val availableUpdateBadge by viewModel.availableUpdateBadge.collectAsStateWithLifecycle()
     val installedExtensions by viewModel.installedExtensions.collectAsStateWithLifecycle()
     val installingAddonId by viewModel.installingAddonId.collectAsStateWithLifecycle()
+    val installProgressPercent by viewModel.installProgressPercent.collectAsStateWithLifecycle()
     val extensionStatusMessage by viewModel.extensionStatusMessage.collectAsStateWithLifecycle()
+
+    val uiScope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
 
     var currentPage by remember { mutableStateOf(ActiveFullScreenPage.BROWSER) }
     var isToolbarVisible by remember { mutableStateOf(true) }
     var lastToolbarToggleMs by remember { mutableLongStateOf(0L) }
+    var dismissedAutofillHost by remember { mutableStateOf("") }
 
     var videoFitMode by remember { mutableStateOf(RedmiVideoFitMode.STANDAR_16_9) }
     var showVideoOverlayControls by remember { mutableStateOf(true) }
@@ -137,11 +161,16 @@ fun BrowserScreen(
 
     val isOnNewTabPage = activeTabState.url == "about:blank" || activeTabState.url.isEmpty()
 
-    // Sembunyikan otomatis Top Omnibox setelah halaman web selesai dimuat agar layar penuh & bebas gangguan saat scroll
-    LaunchedEffect(activeTabState.isLoading, activeTabState.url, isOnNewTabPage) {
-        if (!isOnNewTabPage && !activeTabState.isLoading && activeTabState.progress == 100) {
-            delay(2800L)
-            isToolbarVisible = false
+    // Tampilkan selalu Top Omnibox saat berpindah alamat URL baru agar bagian atas halaman web tidak tertutup
+    LaunchedEffect(activeTabState.url) {
+        isToolbarVisible = true
+    }
+
+    // Bersihkan otomatis pesan sukses instalasi ekstensi setelah 4.5 detik
+    LaunchedEffect(installProgressPercent, extensionStatusMessage) {
+        if (installProgressPercent == null && !extensionStatusMessage.isNullOrBlank()) {
+            delay(4500L)
+            viewModel.clearExtensionStatusMessage()
         }
     }
 
@@ -220,6 +249,23 @@ fun BrowserScreen(
         animationSpec = tween(durationMillis = 220),
         label = "toolbarOffsetPx"
     )
+    val webTopPaddingDp = if (activeTabState.isFullScreen) {
+        0.dp
+    } else {
+        with(density) { animatedTopOffsetPx.toDp() }
+    }
+
+    val matchingLoginForCurrentSite = remember(savedLogins, activeTabState.url, dismissedAutofillHost) {
+        if (isOnNewTabPage || activeTabState.isFullScreen) {
+            null
+        } else {
+            savedLogins.firstOrNull { login ->
+                login.host.isNotBlank() &&
+                    activeTabState.url.contains(login.host, ignoreCase = true) &&
+                    !login.host.equals(dismissedAutofillHost, ignoreCase = true)
+            }
+        }
+    }
 
     Scaffold(
         contentWindowInsets = if (activeTabState.isFullScreen) WindowInsets(0, 0, 0, 0) else WindowInsets.systemBars,
@@ -274,10 +320,33 @@ fun BrowserScreen(
                                 historyList = historyEntries,
                                 bookmarkList = bookmarks,
                                 onItemClick = { url ->
-                                    viewModel.loadInput(url)
                                     currentPage = ActiveFullScreenPage.BROWSER
+                                    uiScope.launch {
+                                        delay(120L)
+                                        viewModel.loadInput(url)
+                                    }
                                 },
                                 onClearHistory = { viewModel.clearHistory() }
+                            )
+                        }
+
+                        ActiveFullScreenPage.PASSWORDS -> {
+                            PasswordManagerSheet(
+                                savedLogins = savedLogins,
+                                currentSiteUrl = activeTabState.url,
+                                onAddLogin = { site, user, pass ->
+                                    viewModel.addSavedLogin(site, user, pass)
+                                },
+                                onDeleteLogin = { id ->
+                                    viewModel.deleteSavedLogin(id)
+                                },
+                                onOpenAndAutofill = { login ->
+                                    currentPage = ActiveFullScreenPage.BROWSER
+                                    uiScope.launch {
+                                        delay(120L)
+                                        viewModel.openAndAutofillLogin(login)
+                                    }
+                                }
                             )
                         }
 
@@ -285,6 +354,7 @@ fun BrowserScreen(
                             ExtensionsSheet(
                                 installedExtensions = installedExtensions,
                                 installingAddonId = installingAddonId,
+                                installProgressPercent = installProgressPercent,
                                 statusMessage = extensionStatusMessage,
                                 onInstallRecommended = { addon ->
                                     viewModel.installRecommendedAddon(addon)
@@ -298,9 +368,20 @@ fun BrowserScreen(
                                 onUninstallExtension = { ext ->
                                     viewModel.uninstallExtension(ext)
                                 },
-                                onOpenMozillaStore = { storeUrl ->
-                                    viewModel.loadInput(storeUrl)
+                                onOpenExtensionOptions = { optionsUrl ->
                                     currentPage = ActiveFullScreenPage.BROWSER
+                                    uiScope.launch {
+                                        delay(140L)
+                                        viewModel.loadInput(optionsUrl)
+                                    }
+                                },
+                                onOpenMozillaStore = { storeUrl ->
+                                    // Pindah ke layar Browser terlebih dahulu agar transisi animasi 60fps mulus tanpa jank
+                                    currentPage = ActiveFullScreenPage.BROWSER
+                                    uiScope.launch {
+                                        delay(140L)
+                                        viewModel.loadInput(storeUrl)
+                                    }
                                 },
                                 onRefresh = { viewModel.refreshExtensions() }
                             )
@@ -350,7 +431,6 @@ fun BrowserScreen(
                         }
 
                         ActiveFullScreenPage.BROWSER -> {
-                            // Container Statis dengan Deteksi Scroll Anti-Glitch (Tanpa Resize SurfaceView)
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -363,7 +443,6 @@ fun BrowserScreen(
                                                 pass = PointerEventPass.Initial
                                             )
                                             if (activeTabState.isFullScreen) {
-                                                // Tampilkan kontrol rasio layar saat menyentuh bagian atas video fullscreen
                                                 if (down.position.y < 220f) {
                                                     lastVideoTouchMs = SystemClock.elapsedRealtime()
                                                 }
@@ -379,7 +458,6 @@ fun BrowserScreen(
                                                     val stepDy = change.position.y - prevY
                                                     prevY = change.position.y
 
-                                                    // Reset akumulator jika arah jari berbalik
                                                     if ((totalDy > 0f && stepDy < 0f) || (totalDy < 0f && stepDy > 0f)) {
                                                         totalDy = stepDy
                                                     } else {
@@ -403,11 +481,11 @@ fun BrowserScreen(
                                         }
                                     }
                             ) {
-                                // 1. Area Konten Web / Beranda:
-                                // GeckoView 100% statis (tanpa offset dan tanpa padding animasi) agar scroll 60fps sangat mulus
+                                // 1. Area Konten Web / Beranda dengan Jarak Top Bar Presisi agar Tidak Tertutup TopAppBar
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
+                                        .padding(top = webTopPaddingDp)
                                         .background(OledBlack)
                                 ) {
                                     if (isOnNewTabPage) {
@@ -421,15 +499,13 @@ fun BrowserScreen(
                                             networkStats = networkStats,
                                             onNavigate = { viewModel.loadInput(it) },
                                             onOpenNetworkSettings = { currentPage = ActiveFullScreenPage.SETTINGS },
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .padding(top = 57.dp)
+                                            modifier = Modifier.fillMaxSize()
                                         )
                                     } else {
                                         BrowserGeckoView(
                                             activeSession = viewModel.getActiveSession(),
                                             isFullScreen = activeTabState.isFullScreen,
-                                            dynamicToolbarMaxHeightPx = toolbarHeightPx.roundToInt(),
+                                            dynamicToolbarMaxHeightPx = 0,
                                             verticalClippingPx = 0,
                                             videoScaleX = if (activeTabState.isFullScreen) videoFitMode.scaleX else 1f,
                                             videoScaleY = if (activeTabState.isFullScreen) videoFitMode.scaleY else 1f,
@@ -438,7 +514,7 @@ fun BrowserScreen(
                                     }
                                 }
 
-                                // 2. Top Omnibox yang Meluncur Halus via Offset di Atas Konten
+                                // 2. Top Omnibox + Saran Riwayat & Bookmark ala Chrome + Indikator Progres Instalasi Ekstensi
                                 if (!activeTabState.isFullScreen) {
                                     Column(
                                         modifier = Modifier
@@ -459,6 +535,8 @@ fun BrowserScreen(
                                             networkSpeedText = networkStats.formattedDownloadSpeed,
                                             availableUpdateVersion = availableUpdateBadge?.versionName,
                                             isIncognito = activeTabState.isIncognito,
+                                            historyList = historyEntries,
+                                            bookmarkList = bookmarks,
                                             onNavigate = { viewModel.loadInput(it) },
                                             onHomeClick = { viewModel.navigateHome() },
                                             onReload = { viewModel.reload() },
@@ -468,6 +546,9 @@ fun BrowserScreen(
                                             onExtensionsClick = {
                                                 viewModel.refreshExtensions()
                                                 currentPage = ActiveFullScreenPage.EXTENSIONS
+                                            },
+                                            onPasswordManagerClick = {
+                                                currentPage = ActiveFullScreenPage.PASSWORDS
                                             },
                                             onFindInPageClick = { viewModel.startFindInPage() },
                                             onToggleDesktopMode = { viewModel.toggleDesktopMode() },
@@ -504,7 +585,130 @@ fun BrowserScreen(
                                     }
                                 }
 
-                                // 3. Kontrol Mode Rasio Video Layar Penuh Redmi 9C (20:9) di Tengah Atas agar Tidak Mengganggu UI YouTube
+                                // 3. Banner Progres Instalasi Ekstensi Live (0% - 100%) Saat Memasang dari Toko / Web
+                                AnimatedVisibility(
+                                    visible = !activeTabState.isFullScreen &&
+                                        (installProgressPercent != null || !extensionStatusMessage.isNullOrBlank()),
+                                    enter = fadeIn(),
+                                    exit = fadeOut(),
+                                    modifier = Modifier
+                                        .align(Alignment.TopCenter)
+                                        .padding(top = webTopPaddingDp + 8.dp, start = 14.dp, end = 14.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(DarkSurfaceVariant)
+                                            .border(1.5.dp, ElectricOrange, RoundedCornerShape(12.dp))
+                                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Extension,
+                                                contentDescription = null,
+                                                tint = ElectricOrange,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Text(
+                                                text = extensionStatusMessage ?: "Memasang ekstensi ke Zenvora...",
+                                                color = TextPrimary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            if (installProgressPercent != null) {
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = "${installProgressPercent}%",
+                                                    color = ElectricOrange,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.ExtraBold
+                                                )
+                                            }
+                                        }
+                                        if (installProgressPercent != null) {
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            LinearProgressIndicator(
+                                                progress = { (installProgressPercent!!.coerceIn(0, 100)) / 100f },
+                                                color = ElectricOrange,
+                                                trackColor = DarkOutline,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(4.dp)
+                                                    .clip(RoundedCornerShape(2.dp))
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // 4. Chip Autofill Cepat jika Situs Saat Ini Memiliki Sandi Tersimpan di Zenvora
+                                AnimatedVisibility(
+                                    visible = matchingLoginForCurrentSite != null,
+                                    enter = fadeIn(),
+                                    exit = fadeOut(),
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = 16.dp, start = 16.dp, end = 16.dp)
+                                ) {
+                                    matchingLoginForCurrentSite?.let { login ->
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(24.dp))
+                                                .background(DarkSurface)
+                                                .border(1.5.dp, ElectricOrange, RoundedCornerShape(24.dp))
+                                                .clickable {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    viewModel.autofillLoginOnCurrentPage(login)
+                                                }
+                                                .padding(start = 14.dp, end = 8.dp, top = 8.dp, bottom = 8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Key,
+                                                contentDescription = null,
+                                                tint = ElectricOrange,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                                                Text(
+                                                    text = "Isi Sandi: ${login.username}",
+                                                    color = TextPrimary,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = "Ketuk untuk autofill ke ${login.host}",
+                                                    color = ElectricOrange,
+                                                    fontSize = 10.sp
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            IconButton(
+                                                onClick = {
+                                                    dismissedAutofillHost = login.host
+                                                },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Close,
+                                                    contentDescription = "Tutup Saran Sandi",
+                                                    tint = TextSecondary,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 5. Kontrol Mode Rasio Video Layar Penuh Redmi 9C (20:9) di Tengah Atas
                                 AnimatedVisibility(
                                     visible = activeTabState.isFullScreen && showVideoOverlayControls,
                                     enter = fadeIn(),
@@ -530,6 +734,7 @@ fun BrowserScreen(
                                                     .clip(RoundedCornerShape(14.dp))
                                                     .background(if (isSelected) ElectricOrange else DarkSurfaceContainer)
                                                     .clickable {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                                         videoFitMode = mode
                                                         lastVideoTouchMs = SystemClock.elapsedRealtime()
                                                     }
