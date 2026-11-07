@@ -54,6 +54,7 @@ class BrowserSession(
     private var isOpen = false
     private var desktopModeEnabled = false
     var adblockEnabled = true
+    var externalAdblockActive = false
     var onXpiInstallRequested: ((String) -> Unit)? = null
 
     fun initSession(
@@ -194,7 +195,8 @@ class BrowserSession(
                 }
 
                 // 1. Blokir permintaan / redirect ke domain iklan & pop-under via Native Rust AdblockEngine
-                if (adblockEnabled && targetUri.startsWith("http") && AdblockEngine.isUrlBlocked(targetUri)) {
+                // Jika uBlock Origin sedang aktif (externalAdblockActive), lewati pemeriksaan ganda JNI agar loading web 2x lebih cepat
+                if (adblockEnabled && !externalAdblockActive && targetUri.startsWith("http") && AdblockEngine.isUrlBlocked(targetUri)) {
                     _tabState.update {
                         it.copy(blockedRequestsCount = it.blockedRequestsCount + 1)
                     }
@@ -203,7 +205,7 @@ class BrowserSession(
 
                 // 2. Blokir pembukaan tab pop-under paksa (TARGET_WINDOW_NEW) dari script situs streaming
                 if (adblockEnabled && request.target == GeckoSession.NavigationDelegate.TARGET_WINDOW_NEW) {
-                    if (!request.hasUserGesture || AdblockEngine.isUrlBlocked(targetUri)) {
+                    if (!request.hasUserGesture || (!externalAdblockActive && AdblockEngine.isUrlBlocked(targetUri))) {
                         _tabState.update {
                             it.copy(blockedRequestsCount = it.blockedRequestsCount + 1)
                         }

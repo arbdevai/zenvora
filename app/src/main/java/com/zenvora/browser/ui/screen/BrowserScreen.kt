@@ -148,6 +148,7 @@ fun BrowserScreen(
 
     var currentPage by remember { mutableStateOf(ActiveFullScreenPage.BROWSER) }
     var isToolbarVisible by remember { mutableStateOf(true) }
+    var isOmniboxFocused by remember { mutableStateOf(false) }
     var lastToolbarToggleMs by remember { mutableLongStateOf(0L) }
     var dismissedAutofillHost by remember { mutableStateOf("") }
 
@@ -243,7 +244,7 @@ fun BrowserScreen(
 
     val density = LocalDensity.current
     val toolbarHeightPx = with(density) { 57.dp.toPx() }
-    val showTopBar = !activeTabState.isFullScreen && (isToolbarVisible || isOnNewTabPage)
+    val showTopBar = !activeTabState.isFullScreen && (isToolbarVisible || isOnNewTabPage || isOmniboxFocused)
     val animatedTopOffsetPx by animateFloatAsState(
         targetValue = if (showTopBar) toolbarHeightPx else 0f,
         animationSpec = tween(durationMillis = 220),
@@ -340,7 +341,7 @@ fun BrowserScreen(
                                 onDeleteLogin = { id ->
                                     viewModel.deleteSavedLogin(id)
                                 },
-                                onOpenAndAutofill = { login ->
+                                onOpenAndAutofillLogin = { login ->
                                     currentPage = ActiveFullScreenPage.BROWSER
                                     uiScope.launch {
                                         delay(120L)
@@ -454,7 +455,7 @@ fun BrowserScreen(
                                                 val event = awaitPointerEvent(pass = PointerEventPass.Initial)
                                                 val change = event.changes.firstOrNull { it.id == down.id }
                                                     ?: event.changes.firstOrNull()
-                                                if (change != null && change.pressed && !isOnNewTabPage && !activeTabState.isFullScreen) {
+                                                if (change != null && change.pressed && !isOnNewTabPage && !activeTabState.isFullScreen && !isOmniboxFocused) {
                                                     val stepDy = change.position.y - prevY
                                                     prevY = change.position.y
 
@@ -537,6 +538,12 @@ fun BrowserScreen(
                                             isIncognito = activeTabState.isIncognito,
                                             historyList = historyEntries,
                                             bookmarkList = bookmarks,
+                                            onFocusStateChanged = { focused ->
+                                                isOmniboxFocused = focused
+                                                if (focused) {
+                                                    isToolbarVisible = true
+                                                }
+                                            },
                                             onNavigate = { viewModel.loadInput(it) },
                                             onHomeClick = { viewModel.navigateHome() },
                                             onReload = { viewModel.reload() },

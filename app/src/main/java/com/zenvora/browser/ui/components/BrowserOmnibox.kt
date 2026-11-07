@@ -118,6 +118,7 @@ fun BrowserOmnibox(
     isIncognito: Boolean = false,
     historyList: List<HistoryEntity> = emptyList(),
     bookmarkList: List<BookmarkEntity> = emptyList(),
+    onFocusStateChanged: (Boolean) -> Unit = {},
     onNavigate: (String) -> Unit,
     onHomeClick: () -> Unit,
     onReload: () -> Unit,
@@ -297,6 +298,7 @@ fun BrowserOmnibox(
                             .fillMaxWidth()
                             .onFocusChanged { focusState ->
                                 isFocused = focusState.isFocused
+                                onFocusStateChanged(focusState.isFocused)
                                 if (focusState.isFocused) {
                                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     if (textFieldValue == "about:blank") {

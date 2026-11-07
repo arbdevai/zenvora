@@ -125,6 +125,18 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             }
         }
         viewModelScope.launch {
+            extensionManager.installedExtensions.collect { extList ->
+                val hasActiveExternalAdblock = extList.any { ext ->
+                    !ext.isBuiltIn && ext.isEnabled && (
+                        ext.id.contains("uBlock", ignoreCase = true) ||
+                            ext.name.contains("uBlock", ignoreCase = true) ||
+                            ext.name.contains("AdGuard", ignoreCase = true)
+                        )
+                }
+                sessionsMap.values.forEach { it.externalAdblockActive = hasActiveExternalAdblock }
+            }
+        }
+        viewModelScope.launch {
             preferencesRepository.isNetworkTurboEnabled.collect { enabled ->
                 networkSpeedManager.setTurboEnabled(enabled)
                 val provider = DnsProvider.fromId(dnsProviderId.value)
