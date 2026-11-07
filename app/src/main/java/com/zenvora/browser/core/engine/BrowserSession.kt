@@ -3,6 +3,7 @@ package com.zenvora.browser.core.engine
 import android.content.Context
 import android.net.Uri
 import com.zenvora.browser.core.adblock.AdblockEngine
+import com.zenvora.browser.data.local.entity.SavedLoginEntity
 import com.zenvora.browser.data.model.BrowserTab
 import com.zenvora.browser.data.model.SecurityInfo
 import com.zenvora.browser.data.model.SecurityStatus
@@ -61,6 +62,7 @@ class BrowserSession(
     var adblockEnabled = true
     var externalAdblockActive = false
     var onXpiInstallRequested: ((String) -> Unit)? = null
+    var onLoginCaptured: ((SavedLoginEntity) -> Unit)? = null
 
     fun initSession(
         context: Context,
@@ -134,9 +136,13 @@ class BrowserSession(
         }
         geckoSession.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(session: GeckoSession, url: String) {
-                if (!url.startsWith("https://zenvora.stream.detect/")) {
-                    _detectedVideoStream.value = null
+                if (url.startsWith("https://zenvora.stream.detect/") ||
+                    url.startsWith("https://zenvora.auth.capture/") ||
+                    url.startsWith("https://zenvora.cmd.local/")
+                ) {
+                    return
                 }
+                _detectedVideoStream.value = null
                 applyDesktopSettings(desktopModeEnabled, url)
                 _tabState.update {
                     it.copy(
@@ -204,6 +210,30 @@ class BrowserSession(
                             )
                         }
                     } catch (_: Exception) {}
+                    return GeckoResult.fromValue(AllowOrDeny.DENY)
+                }
+
+                // 0b. Tangkap kredensial form login otomatis untuk Zenvora Password Manager
+                if (targetUri.startsWith("https://zenvora.auth.capture/")) {
+                    if (!isIncognito) {
+                        try {
+                            val parsed = Uri.parse(targetUri)
+                            val host = parsed.getQueryParameter("host").orEmpty().trim()
+                            val siteUrl = parsed.getQueryParameter("url").orEmpty().trim().ifEmpty { _tabState.value.url }
+                            val username = parsed.getQueryParameter("user").orEmpty().trim()
+                            val passwordVal = parsed.getQueryParameter("pass").orEmpty()
+                            if (host.isNotEmpty() && username.isNotEmpty() && passwordVal.isNotEmpty()) {
+                                onLoginCaptured?.invoke(
+                                    SavedLoginEntity(
+                                        host = host,
+                                        siteUrl = siteUrl,
+                                        username = username,
+                                        passwordValue = passwordVal
+                                    )
+                                )
+                            }
+                        } catch (_: Exception) {}
+                    }
                     return GeckoResult.fromValue(AllowOrDeny.DENY)
                 }
 
@@ -347,24 +377,27 @@ class BrowserSession(
         geckoSession.loadUri(normalized)
     }
 
-    fun applyVideoObjectFit(objectFitValue: String) {
+    fun applyVideoObjectFit(fitMode: String) {
         try {
-            val safeFit = JSONObject.quote(objectFitValue)
+            val safeFit = JSONObject.quote(fitMode)
             val js = """
                 javascript:(function(){
                   try {
                     var mode = $safeFit;
                     var vids = document.querySelectorAll('video');
                     for (var i = 0; i < vids.length; i++) {
-                      vids[i].style.setProperty('object-fit', mode, 'important');
-                    }
-                    var frames = document.querySelectorAll('iframe');
-                    for (var j = 0; j < frames.length; j++) {
-                      try {
-                        if (frames[j].contentWindow) {
-                          frames[j].contentWindow.postMessage({ zenvoraObjectFit: mode }, '*');
-                        }
-                      } catch (e) {}
+                      var v = vids[i];
+                      v.style.setProperty('transform-origin', 'center center', 'important');
+                      if (mode === 'stretch_20_9') {
+                        v.style.setProperty('object-fit', 'fill', 'important');
+                        v.style.setProperty('transform', 'scale(1.25, 1.03)', 'important');
+                      } else if (mode === 'zoom_20_9') {
+                        v.style.setProperty('object-fit', 'cover', 'important');
+                        v.style.setProperty('transform', 'scale(1.26, 1.26)', 'important');
+                      } else {
+                        v.style.setProperty('object-fit', 'contain', 'important');
+                        v.style.setProperty('transform', 'scale(1, 1)', 'important');
+                      }
                     }
                   } catch (e) {}
                 })();

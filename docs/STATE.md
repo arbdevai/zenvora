@@ -1,9 +1,9 @@
 # Project State & Session Memory
 
 ## Status Saat Ini
-- **Fase Aktif:** Fase 11: Zenvora Native Media3 ExoPlayer Streaming Engine, Pure Gecko Web Layout, Non-Zooming CSS `object-fit` Aspect Ratio, Static Zero-Glitch SurfaceView & HTTP Range Resumable Updater (v2.0.0)
-- **Versi Terakhir:** v2.0.0 (versionCode: 20000)
-- **Status CI Terakhir:** Siap Commit & Push v2.0.0 ke GitHub Actions
+- **Fase Aktif:** Fase 12: CSP-Free Cross-Iframe Video Scale & Aspect Ratio Controller, Automatic Password Capture & Save Prompt Banner, and 3-Layer Next-Gen Adblock Shield (v2.1.0)
+- **Versi Terakhir:** v2.1.0 (versionCode: 20100)
+- **Status CI Terakhir:** Siap Commit & Push v2.1.0 ke GitHub Actions
 - **Remote Repo:** https://github.com/arbdevai/zenvora
 
 ## Fitur yang Selesai Tuntas (Vertical Slices)
@@ -58,7 +58,11 @@
   2. Hapus `.graphicsLayer { scaleX; scaleY }` dari `BrowserGeckoView.kt` dan ganti kontrol rasio video web dengan injeksi CSS `object-fit` (`contain`, `cover`, `fill`) lintas-iframe (`postMessage` ke semua `iframe`) sehingga **hanya gambar videonya yang melebar ke 20:9 sedangkan tombol kontrol player dan subtitle tidak pernah ikut ter-zoom**.
   3. Tambahkan library **AndroidX Media3 ExoPlayer (`1.5.1`)** dan komponen `NativeVideoPlayerOverlay.kt` + sniffer aliran video `.m3u8` / `.mp4` / `.mpd` lintas-iframe (`https://zenvora.stream.detect/`) lengkap dengan penerusan header `Referer` & `Origin` otomatis. Saat video diputar di situs mana pun (termasuk `SUPJAV.COM`), user cukup klik **"Putar di Zenvora Native Player"** untuk menonton dengan pemutar native Android yang 100% bebas bug layout web.
   4. Pindahkan direktori unduhan `UpdateManager.kt` ke `externalCacheDir`, panggil `cleanOldUpdateFiles()` di awal `checkForUpdates()` & `downloadUpdate()`, dan tambahkan **HTTP Range Auto-Resume** (3x retry) agar unduhan APK 91 MB tidak pernah gagal integritas.
+- *Catatan #23:* **Mode Paskan Layar & Zoom Tidak Berfungsi di YouTube/Web ber-CSP, Password Manager Tidak Auto-Save/Muncul Prompt, & Upgrade Next-Gen Adblock (v2.0.0 -> Fixed v2.1.0)**:
+  1. `geckoSession.loadUri("javascript:...")` diblokir oleh `Content-Security-Policy` (CSP) di YouTube (`m.youtube.com`) dan situs modern, serta `object-fit: cover` saja tidak memperlebar kotak `<video>` YouTube yang dikunci inline ke 16:9. Solusi permanen: tambahkan izin `"tabs"` di `manifest.json`, kirim sinyal komando melalui `commandSession` (`https://zenvora.cmd.local/exec?cmd=video_fit&mode=...`) yang ditangkap `background.js` lalu disiarkan via `browser.tabs.sendMessage` ke `content_shield.js` di seluruh `iframe`, dan terapkan CSS `transform: scale(1.25, 1.03)` (`Pas Layar 20:9`) atau `scale(1.26, 1.26)` (`Zoom Penuh`) **khusus pada elemen `<video>`** sehingga video penuh 20:9 sementara tombol kontrol player tetap 100% utuh dan tidak ikut ter-zoom.
+  2. Tambahkan pendeteksi form login otomatis di `content_shield.js` (`submit`, `Enter`, dan klik tombol login) yang menangkap `(host, url, username, password)` dan mengirimkannya ke `BrowserSession.onLoadRequest` (`https://zenvora.auth.capture/`), lalu tampilkan banner otomatis **"Simpan sandi untuk [host]?"** di `BrowserScreen.kt` beserta autofill bebas CSP via `browser.tabs.sendMessage`.
+  3. Perkuat Adblock dengan arsitektur Next-Gen 3-Lapis: perluas daftar domain jaringan iklan/pop-under/judol di `native/adblock_core/src/lib.rs` & `background.js` (`O(1) Set`), blokir script pihak ketiga dari TLD mencurigakan (`.icu`, `.cfd`, `.sbs`, `.buzz`, `.loan`, `.men`, `.hair`, `.skin`, `.rest`), cegah click-hijacking `HTMLAnchorElement.prototype.click` di `document_start`, tambahkan auto-skipper iklan video YouTube, dan pasang filter kosmetik presisi tinggi yang hanya menyembunyikan slot iklan eksplisit tanpa merusak layout web modern.
 
 ## Tugas Aktif Selanjutnya (Next Actions)
 1. Verifikasi sintaksis `python3 /home/coder/.gemini/config/skills/android-compose-builder/scripts/verify_kotlin_syntax.py .` (0 hard errors).
-2. Commit dan push rilis `v2.0.0` ke `origin main` serta pantau workflow GitHub Actions hingga selesai.
+2. Commit dan push rilis `v2.1.0` ke `origin main` serta pantau workflow GitHub Actions hingga selesai.

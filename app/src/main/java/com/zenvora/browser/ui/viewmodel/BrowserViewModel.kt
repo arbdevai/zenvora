@@ -122,9 +122,17 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
     private val _activeNativeVideoStream = MutableStateFlow<DetectedVideoStream?>(null)
     val activeNativeVideoStream: StateFlow<DetectedVideoStream?> = _activeNativeVideoStream.asStateFlow()
 
+    private val _pendingCapturedLogin = MutableStateFlow<SavedLoginEntity?>(null)
+    val pendingCapturedLogin: StateFlow<SavedLoginEntity?> = _pendingCapturedLogin.asStateFlow()
+
+    private val commandSession = org.mozilla.geckoview.GeckoSession()
+
     private var isRestoringTabs = true
 
     init {
+        try {
+            commandSession.open(runtime)
+        } catch (_: Exception) {}
         networkSpeedManager.startMonitoring(viewModelScope)
         viewModelScope.launch {
             preferencesRepository.isAdblockEnabled.collect { enabled ->
@@ -225,6 +233,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                     session.onXpiInstallRequested = { xpiUri ->
                         extensionManager.installFromUrl(xpiUri)
                     }
+                    session.onLoginCaptured = { captured ->
+                        onLoginCapturedFromWeb(captured)
+                    }
                     session.initSession(
                         context = context,
                         runtime = runtime,
@@ -304,6 +315,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         session.adblockEnabled = isAdblockEnabled.value
         session.onXpiInstallRequested = { xpiUri ->
             extensionManager.installFromUrl(xpiUri)
+        }
+        session.onLoginCaptured = { captured ->
+            onLoginCapturedFromWeb(captured)
         }
         session.initSession(
             context = context,
@@ -500,8 +514,26 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         getActiveSession()?.exitFullScreen()
     }
 
-    fun applyVideoObjectFit(objectFitValue: String) {
-        getActiveSession()?.applyVideoObjectFit(objectFitValue)
+    private fun dispatchExtensionCommand(
+        cmd: String,
+        mode: String = "",
+        user: String = "",
+        pass: String = ""
+    ) {
+        try {
+            val encodedCmd = URLEncoder.encode(cmd, StandardCharsets.UTF_8.toString())
+            val encodedMode = URLEncoder.encode(mode, StandardCharsets.UTF_8.toString())
+            val encodedUser = URLEncoder.encode(user, StandardCharsets.UTF_8.toString())
+            val encodedPass = URLEncoder.encode(pass, StandardCharsets.UTF_8.toString())
+            val bridgeUrl =
+                "https://zenvora.cmd.local/exec?cmd=$encodedCmd&mode=$encodedMode&user=$encodedUser&pass=$encodedPass"
+            commandSession.loadUri(bridgeUrl)
+        } catch (_: Exception) {}
+    }
+
+    fun applyVideoObjectFit(fitMode: String) {
+        dispatchExtensionCommand(cmd = "video_fit", mode = fitMode)
+        getActiveSession()?.applyVideoObjectFit(fitMode)
     }
 
     fun openNativeVideoPlayer(stream: DetectedVideoStream) {
@@ -762,20 +794,49 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private fun onLoginCapturedFromWeb(captured: SavedLoginEntity) {
+        viewModelScope.launch {
+            val existing = database.savedLoginDao().findLoginByHostAndUser(captured.host, captured.username)
+            if (existing != null && existing.passwordValue == captured.passwordValue) {
+                return@launch
+            }
+            _pendingCapturedLogin.value = captured
+        }
+    }
+
+    fun confirmSaveCapturedLogin() {
+        val pending = _pendingCapturedLogin.value ?: return
+        _pendingCapturedLogin.value = null
+        addSavedLogin(
+            siteInput = pending.siteUrl.ifEmpty { pending.host },
+            username = pending.username,
+            passwordValue = pending.passwordValue
+        )
+    }
+
+    fun dismissCapturedLogin() {
+        _pendingCapturedLogin.value = null
+    }
+
     fun openAndAutofillLogin(login: SavedLoginEntity) {
         loadInput(login.siteUrl)
         viewModelScope.launch {
             delay(1500L)
+            dispatchExtensionCommand(cmd = "autofill", user = login.username, pass = login.passwordValue)
             getActiveSession()?.autofillCredentials(login.username, login.passwordValue)
         }
     }
 
     fun autofillLoginOnCurrentPage(login: SavedLoginEntity) {
+        dispatchExtensionCommand(cmd = "autofill", user = login.username, pass = login.passwordValue)
         getActiveSession()?.autofillCredentials(login.username, login.passwordValue)
     }
 
     override fun onCleared() {
         super.onCleared()
+        try {
+            commandSession.close()
+        } catch (_: Exception) {}
         mediaNotificationManager.release()
         sessionsMap.values.forEach { it.close() }
         sessionsMap.clear()

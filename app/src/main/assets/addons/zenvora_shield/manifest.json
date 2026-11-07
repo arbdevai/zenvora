@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "Zenvora Stealth Shield",
-  "version": "2.0.0",
-  "description": "Native sub-resource adblocker, pop-under blocker, and anti-adblock defuser for Zenvora.",
+  "version": "2.1.0",
+  "description": "Next-gen sub-resource adblocker, pop-under blocker, video aspect controller, and credential auto-capture for Zenvora.",
   "browser_specific_settings": {
     "gecko": {
       "id": "zenvora-shield@zenvora.browser",
@@ -10,6 +10,7 @@
     }
   },
   "permissions": [
+    "tabs",
     "webRequest",
     "webRequestBlocking",
     "<all_urls>"

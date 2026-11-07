@@ -1,6 +1,41 @@
 "use strict";
 
-// Daftar jaringan iklan global, regional, pop-under, dan iklan situs streaming (O(1) Set Lookup)
+// 1. Jembatan Komando Internal Zenvora (Bebas CSP 100% Lintas-Tab & Lintas-Iframe)
+// Menangkap sinyal dari commandSession (https://zenvora.cmd.local/exec?cmd=...) dan meneruskannya ke seluruh frame via browser.tabs.sendMessage
+browser.webRequest.onBeforeRequest.addListener(
+  function(details) {
+    try {
+      const parsed = new URL(details.url);
+      const cmd = parsed.searchParams.get("cmd") || "";
+      const mode = parsed.searchParams.get("mode") || "";
+      const user = parsed.searchParams.get("user") || "";
+      const pass = parsed.searchParams.get("pass") || "";
+
+      if (cmd) {
+        browser.tabs.query({}).then(function(tabs) {
+          for (let i = 0; i < tabs.length; i++) {
+            const tabId = tabs[i].id;
+            if (typeof tabId === "number") {
+              browser.tabs.sendMessage(tabId, {
+                zenvoraCmd: cmd,
+                mode: mode,
+                user: user,
+                pass: pass
+              }).catch(function() {});
+            }
+          }
+        }).catch(function() {});
+      }
+    } catch (_) {}
+    return { cancel: true };
+  },
+  {
+    urls: ["https://zenvora.cmd.local/*"]
+  },
+  ["blocking"]
+);
+
+// 2. Daftar Jaringan Iklan Global, Regional, Pop-Under, Push & Tracker (O(1) Set Lookup)
 const BLOCKED_DOMAINS = new Set([
   "doubleclick.net",
   "googlesyndication.com",
@@ -8,6 +43,8 @@ const BLOCKED_DOMAINS = new Set([
   "adservice.google.com",
   "google-analytics.com",
   "googletagservices.com",
+  "pagead2.googlesyndication.com",
+  "fundingchoicesmessages.google.com",
   "2mdn.net",
   "adnxs.com",
   "advertising.com",
@@ -22,6 +59,28 @@ const BLOCKED_DOMAINS = new Set([
   "casalemedia.com",
   "openx.net",
   "quantserve.com",
+  "ads-twitter.com",
+  "ads.yahoo.com",
+  "ads.linkedin.com",
+  "adroll.com",
+  "sharethrough.com",
+  "triplelift.com",
+  "indexexchange.com",
+  "contextweb.com",
+  "lijit.com",
+  "sovrn.com",
+  "gumgum.com",
+  "kargo.com",
+  "yieldmo.com",
+  "33across.com",
+  "conversantmedia.com",
+  "mediavine.com",
+  "adthrive.com",
+  "ezoic.net",
+  "freestar.io",
+  "snigelweb.com",
+  "playwire.com",
+  "venatusmedia.com",
   "popads.net",
   "popcash.net",
   "propellerads.com",
@@ -55,7 +114,6 @@ const BLOCKED_DOMAINS = new Set([
   "mc.yandex.ru",
   "an.yandex.ru",
   "adrecover.com",
-  "fundingchoicesmessages.google.com",
   "getadmiral.com",
   "bidgear.com",
   "galaksion.com",
@@ -87,8 +145,36 @@ const BLOCKED_DOMAINS = new Set([
   "acscdn.com",
   "tsyndicate.com",
   "twinrdsrv.com",
-  "magsrv.com"
+  "magsrv.com",
+  "rollerads.com",
+  "pushengage.com",
+  "notix.io",
+  "propush.me",
+  "monetag.com",
+  "alwingulla.com",
+  "weeghoof.com",
+  "glugreez.com",
+  "auglupti.com",
+  "whoursie.com",
+  "groleegni.net",
+  "zytpirwai.net",
+  "psaughun.com",
+  "dooloust.net",
+  "heylink.me"
 ]);
+
+// TLD yang 99% dipakai oleh jaringan script pop-under pihak ketiga (Adsterra / Monetag rotating domains)
+const SUSPICIOUS_THIRD_PARTY_AD_TLDS = [
+  ".icu",
+  ".cfd",
+  ".sbs",
+  ".buzz",
+  ".loan",
+  ".men",
+  ".hair",
+  ".skin",
+  ".rest"
+];
 
 // Kata kunci spesifik untuk memblokir iklan slot/judi/pop-under tanpa merusak path halaman web modern
 const AD_URL_KEYWORDS = [
@@ -97,7 +183,9 @@ const AD_URL_KEYWORDS = [
   "/adframe",
   "/adbanner",
   "/banner-iklan",
+  "/iklan-banner",
   "/pasang-iklan",
+  "/space-iklan",
   "/wp-content/plugins/ad-inserter",
   "/wp-content/plugins/advanced-ads",
   "/wp-content/plugins/wp-quads",
@@ -113,14 +201,21 @@ const AD_URL_KEYWORDS = [
   "idnplay",
   "pkvgames",
   "joker123",
+  "pragmaticplay",
+  "pgsoft",
   "judol",
   "zeus88",
   "hoki88",
   "cuan88",
   "gacor88",
+  "rajacuan",
   "mahjongways",
   "kakekzeus",
   "situsgacor",
+  "garudagacor",
+  "dewaslot",
+  "rajaslot",
+  "ligaciputra",
   "rtp-slot",
   "rtpslot"
 ];
@@ -150,7 +245,7 @@ const NEUTERED_AD_SCRIPT_DATA_URL =
 const TRANSPARENT_PIXEL_DATA_URL =
   "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
-// O(1) Domain Suffix Lookup (Sangat Cepat & Tidak Membebani CPU saat uBlock Origin Aktif)
+// O(1) Domain Suffix Lookup (Sangat Cepat & Tidak Membebani CPU)
 function isDomainBlockedFast(hostname) {
   if (!hostname) return false;
   let current = hostname.toLowerCase();
@@ -162,6 +257,27 @@ function isDomainBlockedFast(hostname) {
     dotIndex = current.indexOf(".");
   }
   return false;
+}
+
+function isSuspiciousThirdPartyAdScript(reqHost, originUrl, resourceType) {
+  if (resourceType !== "script" && resourceType !== "sub_frame") return false;
+  if (!reqHost) return false;
+  const hostLower = reqHost.toLowerCase();
+  let matchedTld = false;
+  for (let i = 0; i < SUSPICIOUS_THIRD_PARTY_AD_TLDS.length; i++) {
+    if (hostLower.endsWith(SUSPICIOUS_THIRD_PARTY_AD_TLDS[i])) {
+      matchedTld = true;
+      break;
+    }
+  }
+  if (!matchedTld) return false;
+  if (!originUrl) return true;
+  try {
+    const docHost = new URL(originUrl).hostname.toLowerCase();
+    return docHost !== hostLower && !hostLower.endsWith("." + docHost);
+  } catch (_) {
+    return true;
+  }
 }
 
 function isBaitScript(urlLower) {
@@ -187,7 +303,7 @@ function hasAdKeyword(urlLower) {
 browser.webRequest.onBeforeRequest.addListener(
   function(details) {
     const url = details.url || "";
-    if (!url.startsWith("http")) {
+    if (!url.startsWith("http") || url.startsWith("https://zenvora.")) {
       return {};
     }
 
@@ -204,7 +320,13 @@ browser.webRequest.onBeforeRequest.addListener(
       return {};
     }
 
-    if (isDomainBlockedFast(reqHost) || hasAdKeyword(urlLower)) {
+    const originUrl = details.originUrl || details.documentUrl || "";
+
+    if (
+      isDomainBlockedFast(reqHost) ||
+      hasAdKeyword(urlLower) ||
+      isSuspiciousThirdPartyAdScript(reqHost, originUrl, details.type)
+    ) {
       if (details.type === "script") {
         return { redirectUrl: NEUTERED_AD_SCRIPT_DATA_URL };
       }

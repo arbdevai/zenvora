@@ -106,11 +106,11 @@ private enum class ActiveFullScreenPage {
 
 private enum class WebVideoFitMode(
     val label: String,
-    val cssObjectFit: String
+    val fitCommand: String
 ) {
-    STANDAR_16_9("Rasio 16:9", "contain"),
-    PAS_LAYAR_20_9("Pas Layar 20:9", "cover"),
-    RENTANGKAN_PENUH("Rentangkan", "fill")
+    STANDAR_16_9("Rasio 16:9", "standard"),
+    PAS_LAYAR_20_9("Pas Layar 20:9", "stretch_20_9"),
+    ZOOM_PENUH("Zoom Penuh", "zoom_20_9")
 }
 
 @Composable
@@ -139,6 +139,7 @@ fun BrowserScreen(
     val extensionStatusMessage by viewModel.extensionStatusMessage.collectAsStateWithLifecycle()
     val detectedVideoStream by viewModel.detectedVideoStream.collectAsStateWithLifecycle()
     val activeNativeVideoStream by viewModel.activeNativeVideoStream.collectAsStateWithLifecycle()
+    val pendingCapturedLogin by viewModel.pendingCapturedLogin.collectAsStateWithLifecycle()
 
     val uiScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
@@ -201,6 +202,7 @@ fun BrowserScreen(
             )
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            viewModel.applyVideoObjectFit(videoFitMode.fitCommand)
         } else {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 window.attributes = window.attributes.apply {
@@ -211,6 +213,7 @@ fun BrowserScreen(
             insetsController.show(WindowInsetsCompat.Type.systemBars())
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            viewModel.applyVideoObjectFit(WebVideoFitMode.STANDAR_16_9.fitCommand)
         }
     }
 
@@ -661,7 +664,7 @@ fun BrowserScreen(
 
                                 // 5. Chip Autofill Cepat jika Situs Saat Ini Memiliki Sandi Tersimpan di Zenvora
                                 AnimatedVisibility(
-                                    visible = matchingLoginForCurrentSite != null,
+                                    visible = matchingLoginForCurrentSite != null && pendingCapturedLogin == null,
                                     enter = fadeIn(),
                                     exit = fadeOut(),
                                     modifier = Modifier
@@ -721,7 +724,91 @@ fun BrowserScreen(
                                     }
                                 }
 
-                                // 6. Kontrol Mode Rasio Video Layar Penuh (CSS object-fit Tanpa Men-Zoom Kontrol) + Tombol Player Native
+                                // 5b. Prompt Otomatis Simpan Sandi saat Pengguna Login di Situs Web (Auto-Save Password Prompt)
+                                AnimatedVisibility(
+                                    visible = !activeTabState.isFullScreen && pendingCapturedLogin != null,
+                                    enter = fadeIn(),
+                                    exit = fadeOut(),
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = 16.dp, start = 14.dp, end = 14.dp)
+                                ) {
+                                    pendingCapturedLogin?.let { captured ->
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(16.dp))
+                                                .background(DarkSurfaceVariant)
+                                                .border(1.5.dp, ElectricOrange, RoundedCornerShape(16.dp))
+                                                .padding(horizontal = 14.dp, vertical = 12.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Key,
+                                                contentDescription = null,
+                                                tint = ElectricOrange,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = "Simpan sandi untuk ${captured.host}?",
+                                                    color = TextPrimary,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = "Akun: ${captured.username}",
+                                                    color = TextSecondary,
+                                                    fontSize = 11.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Box(
+                                                contentAlignment = Alignment.Center,
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(DarkSurfaceContainer)
+                                                    .clickable {
+                                                        viewModel.dismissCapturedLogin()
+                                                    }
+                                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                            ) {
+                                                Text(
+                                                    text = "Jangan",
+                                                    color = TextSecondary,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Box(
+                                                contentAlignment = Alignment.Center,
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(ElectricOrange)
+                                                    .clickable {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        viewModel.confirmSaveCapturedLogin()
+                                                    }
+                                                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                                            ) {
+                                                Text(
+                                                    text = "Simpan",
+                                                    color = OledBlack,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.ExtraBold
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 6. Kontrol Mode Rasio Video Layar Penuh (Transform Hanya pada <video>, Kontrol Player 100% Utuh) + Tombol Player Native
                                 AnimatedVisibility(
                                     visible = activeTabState.isFullScreen && showVideoOverlayControls,
                                     enter = fadeIn(),
@@ -749,7 +836,7 @@ fun BrowserScreen(
                                                     .clickable {
                                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                                         videoFitMode = mode
-                                                        viewModel.applyVideoObjectFit(mode.cssObjectFit)
+                                                        viewModel.applyVideoObjectFit(mode.fitCommand)
                                                         lastVideoTouchMs = SystemClock.elapsedRealtime()
                                                     }
                                                     .padding(horizontal = 10.dp, vertical = 5.dp)
