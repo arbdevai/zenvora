@@ -27,6 +27,7 @@ import com.zenvora.browser.data.local.entity.HistoryEntity
 import com.zenvora.browser.data.local.entity.SavedLoginEntity
 import com.zenvora.browser.data.model.BrowserTab
 import com.zenvora.browser.data.model.SecurityInfo
+import com.zenvora.browser.ui.components.DetectedVideoStream
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -114,6 +115,12 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     private val _securityInfo = MutableStateFlow(SecurityInfo())
     val securityInfo: StateFlow<SecurityInfo> = _securityInfo.asStateFlow()
+
+    private val _detectedVideoStream = MutableStateFlow<DetectedVideoStream?>(null)
+    val detectedVideoStream: StateFlow<DetectedVideoStream?> = _detectedVideoStream.asStateFlow()
+
+    private val _activeNativeVideoStream = MutableStateFlow<DetectedVideoStream?>(null)
+    val activeNativeVideoStream: StateFlow<DetectedVideoStream?> = _activeNativeVideoStream.asStateFlow()
 
     private var isRestoringTabs = true
 
@@ -360,6 +367,14 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
         }
+
+        viewModelScope.launch {
+            session.detectedVideoStream.collect { stream ->
+                if (session.tabId == _activeTabId.value) {
+                    _detectedVideoStream.value = stream
+                }
+            }
+        }
     }
 
     fun selectTab(tabId: String) {
@@ -369,6 +384,7 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
             if (session != null) {
                 _activeTabState.value = session.tabState.value
                 _securityInfo.value = session.securityInfo.value
+                _detectedVideoStream.value = session.detectedVideoStream.value
             }
             persistTabsToStorage()
         }
@@ -482,6 +498,22 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     fun exitFullScreen() {
         getActiveSession()?.exitFullScreen()
+    }
+
+    fun applyVideoObjectFit(objectFitValue: String) {
+        getActiveSession()?.applyVideoObjectFit(objectFitValue)
+    }
+
+    fun openNativeVideoPlayer(stream: DetectedVideoStream) {
+        getActiveSession()?.pauseWebVideos()
+        if (_activeTabState.value.isFullScreen) {
+            getActiveSession()?.exitFullScreen()
+        }
+        _activeNativeVideoStream.value = stream
+    }
+
+    fun closeNativeVideoPlayer() {
+        _activeNativeVideoStream.value = null
     }
 
     fun toggleDesktopMode() {

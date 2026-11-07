@@ -14,8 +14,8 @@ android {
         applicationId = "com.zenvora.browser"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10900
-        versionName = "1.9.0"
+        versionCode = 20000
+        versionName = "2.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -110,6 +110,10 @@ dependencies {
     // Image & Media
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.exoplayer.hls)
+    implementation(libs.androidx.media3.exoplayer.dash)
+    implementation(libs.androidx.media3.ui)
 
     // Utilities
     implementation(libs.zxing.core)

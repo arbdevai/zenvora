@@ -8,8 +8,6 @@ import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -29,7 +27,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
@@ -39,6 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -60,12 +58,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
@@ -80,6 +76,7 @@ import com.zenvora.browser.ui.components.ChromeNewTabPage
 import com.zenvora.browser.ui.components.ExtensionsSheet
 import com.zenvora.browser.ui.components.FindInPageBar
 import com.zenvora.browser.ui.components.HistoryBookmarkSheet
+import com.zenvora.browser.ui.components.NativeVideoPlayerOverlay
 import com.zenvora.browser.ui.components.PasswordManagerSheet
 import com.zenvora.browser.ui.components.SecurityDetailDialog
 import com.zenvora.browser.ui.components.SettingsSheet
@@ -96,7 +93,6 @@ import com.zenvora.browser.ui.theme.TextSecondary
 import com.zenvora.browser.ui.viewmodel.BrowserViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 private enum class ActiveFullScreenPage {
     BROWSER,
@@ -108,14 +104,13 @@ private enum class ActiveFullScreenPage {
     SECURITY
 }
 
-private enum class RedmiVideoFitMode(
+private enum class WebVideoFitMode(
     val label: String,
-    val scaleX: Float,
-    val scaleY: Float
+    val cssObjectFit: String
 ) {
-    STANDAR_16_9("Rasio 16:9", 1.0f, 1.0f),
-    PAS_LAYAR_20_9("Pas Layar 20:9", 1.24f, 1.02f),
-    ZOOM_PENUH_20_9("Zoom Penuh", 1.26f, 1.26f)
+    STANDAR_16_9("Rasio 16:9", "contain"),
+    PAS_LAYAR_20_9("Pas Layar 20:9", "cover"),
+    RENTANGKAN_PENUH("Rentangkan", "fill")
 }
 
 @Composable
@@ -142,17 +137,17 @@ fun BrowserScreen(
     val installingAddonId by viewModel.installingAddonId.collectAsStateWithLifecycle()
     val installProgressPercent by viewModel.installProgressPercent.collectAsStateWithLifecycle()
     val extensionStatusMessage by viewModel.extensionStatusMessage.collectAsStateWithLifecycle()
+    val detectedVideoStream by viewModel.detectedVideoStream.collectAsStateWithLifecycle()
+    val activeNativeVideoStream by viewModel.activeNativeVideoStream.collectAsStateWithLifecycle()
 
     val uiScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
 
     var currentPage by remember { mutableStateOf(ActiveFullScreenPage.BROWSER) }
-    var isToolbarVisible by remember { mutableStateOf(true) }
-    var isOmniboxFocused by remember { mutableStateOf(false) }
-    var lastToolbarToggleMs by remember { mutableLongStateOf(0L) }
     var dismissedAutofillHost by remember { mutableStateOf("") }
+    var dismissedStreamUrl by remember { mutableStateOf("") }
 
-    var videoFitMode by remember { mutableStateOf(RedmiVideoFitMode.STANDAR_16_9) }
+    var videoFitMode by remember { mutableStateOf(WebVideoFitMode.STANDAR_16_9) }
     var showVideoOverlayControls by remember { mutableStateOf(true) }
     var lastVideoTouchMs by remember { mutableLongStateOf(0L) }
 
@@ -161,11 +156,6 @@ fun BrowserScreen(
     }
 
     val isOnNewTabPage = activeTabState.url == "about:blank" || activeTabState.url.isEmpty()
-
-    // Tampilkan selalu Top Omnibox saat berpindah alamat URL baru agar bagian atas halaman web tidak tertutup
-    LaunchedEffect(activeTabState.url) {
-        isToolbarVisible = true
-    }
 
     // Bersihkan otomatis pesan sukses instalasi ekstensi setelah 4.5 detik
     LaunchedEffect(installProgressPercent, extensionStatusMessage) {
@@ -184,9 +174,10 @@ fun BrowserScreen(
         }
     }
 
-    // Mode Real Fullscreen Edge-to-Edge Tanpa Balok Hitam Kiri (Menembus Area Cutout/Notch + Konsumsi Insets)
+    // Mode Real Fullscreen Edge-to-Edge Tanpa Balok Hitam Kiri
     val view = LocalView.current
     LaunchedEffect(activeTabState.isFullScreen) {
+        if (activeNativeVideoStream != null) return@LaunchedEffect
         val activity = view.context as? Activity ?: return@LaunchedEffect
         val window = activity.window
         val insetsController = WindowCompat.getInsetsController(window, view)
@@ -225,7 +216,8 @@ fun BrowserScreen(
 
     // Seluruh navigasi kembali dikendalikan oleh tombol Back fisik/gesture HP
     BackHandler(
-        enabled = activeTabState.isFullScreen ||
+        enabled = activeNativeVideoStream != null ||
+            activeTabState.isFullScreen ||
             updateState !is UpdateState.Idle ||
             currentPage != ActiveFullScreenPage.BROWSER ||
             activeTabState.isFindInPageActive ||
@@ -233,6 +225,7 @@ fun BrowserScreen(
             !isOnNewTabPage
     ) {
         when {
+            activeNativeVideoStream != null -> viewModel.closeNativeVideoPlayer()
             activeTabState.isFullScreen -> viewModel.exitFullScreen()
             updateState !is UpdateState.Idle -> viewModel.dismissUpdate()
             currentPage != ActiveFullScreenPage.BROWSER -> currentPage = ActiveFullScreenPage.BROWSER
@@ -242,19 +235,8 @@ fun BrowserScreen(
         }
     }
 
-    val density = LocalDensity.current
-    val toolbarHeightPx = with(density) { 57.dp.toPx() }
-    val showTopBar = !activeTabState.isFullScreen && (isToolbarVisible || isOnNewTabPage || isOmniboxFocused)
-    val animatedTopOffsetPx by animateFloatAsState(
-        targetValue = if (showTopBar) toolbarHeightPx else 0f,
-        animationSpec = tween(durationMillis = 220),
-        label = "toolbarOffsetPx"
-    )
-    val webTopPaddingDp = if (activeTabState.isFullScreen) {
-        0.dp
-    } else {
-        with(density) { animatedTopOffsetPx.toDp() }
-    }
+    // Tinggi statis 57.dp saat mode normal agar SurfaceView GeckoView TIDAK PERNAH berubah ukuran saat scroll (0% glitch hitam bawah!)
+    val staticWebTopPaddingDp = if (activeTabState.isFullScreen) 0.dp else 57.dp
 
     val matchingLoginForCurrentSite = remember(savedLogins, activeTabState.url, dismissedAutofillHost) {
         if (isOnNewTabPage || activeTabState.isFullScreen) {
@@ -268,8 +250,10 @@ fun BrowserScreen(
         }
     }
 
+    val isFullScreenOrNativePlayer = activeTabState.isFullScreen || activeNativeVideoStream != null
+
     Scaffold(
-        contentWindowInsets = if (activeTabState.isFullScreen) WindowInsets(0, 0, 0, 0) else WindowInsets.systemBars,
+        contentWindowInsets = if (isFullScreenOrNativePlayer) WindowInsets(0, 0, 0, 0) else WindowInsets.systemBars,
         containerColor = OledBlack,
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
@@ -277,11 +261,16 @@ fun BrowserScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .let { base ->
-                    if (activeTabState.isFullScreen) base else base.padding(innerPadding)
+                    if (isFullScreenOrNativePlayer) base else base.padding(innerPadding)
                 }
                 .background(OledBlack)
         ) {
-            if (updateState !is UpdateState.Idle) {
+            if (activeNativeVideoStream != null) {
+                NativeVideoPlayerOverlay(
+                    stream = activeNativeVideoStream!!,
+                    onClose = { viewModel.closeNativeVideoPlayer() }
+                )
+            } else if (updateState !is UpdateState.Idle) {
                 UpdateDialog(
                     state = updateState,
                     onDownload = { info -> viewModel.downloadUpdate(info) },
@@ -377,7 +366,6 @@ fun BrowserScreen(
                                     }
                                 },
                                 onOpenMozillaStore = { storeUrl ->
-                                    // Pindah ke layar Browser terlebih dahulu agar transisi animasi 60fps mulus tanpa jank
                                     currentPage = ActiveFullScreenPage.BROWSER
                                     uiScope.launch {
                                         delay(140L)
@@ -437,56 +425,23 @@ fun BrowserScreen(
                                     .fillMaxSize()
                                     .clipToBounds()
                                     .background(OledBlack)
-                                    .pointerInput(isOnNewTabPage, activeTabState.isFullScreen) {
+                                    .pointerInput(activeTabState.isFullScreen) {
                                         awaitEachGesture {
                                             val down = awaitFirstDown(
                                                 requireUnconsumed = false,
                                                 pass = PointerEventPass.Initial
                                             )
-                                            if (activeTabState.isFullScreen) {
-                                                if (down.position.y < 220f) {
-                                                    lastVideoTouchMs = SystemClock.elapsedRealtime()
-                                                }
+                                            if (activeTabState.isFullScreen && down.position.y < 220f) {
+                                                lastVideoTouchMs = SystemClock.elapsedRealtime()
                                             }
-                                            var prevY = down.position.y
-                                            var totalDy = 0f
-
-                                            do {
-                                                val event = awaitPointerEvent(pass = PointerEventPass.Initial)
-                                                val change = event.changes.firstOrNull { it.id == down.id }
-                                                    ?: event.changes.firstOrNull()
-                                                if (change != null && change.pressed && !isOnNewTabPage && !activeTabState.isFullScreen && !isOmniboxFocused) {
-                                                    val stepDy = change.position.y - prevY
-                                                    prevY = change.position.y
-
-                                                    if ((totalDy > 0f && stepDy < 0f) || (totalDy < 0f && stepDy > 0f)) {
-                                                        totalDy = stepDy
-                                                    } else {
-                                                        totalDy += stepDy
-                                                    }
-
-                                                    val now = SystemClock.elapsedRealtime()
-                                                    if (now - lastToolbarToggleMs > 420L) {
-                                                        if (totalDy < -95f && isToolbarVisible) {
-                                                            isToolbarVisible = false
-                                                            lastToolbarToggleMs = now
-                                                            totalDy = 0f
-                                                        } else if (totalDy > 95f && !isToolbarVisible) {
-                                                            isToolbarVisible = true
-                                                            lastToolbarToggleMs = now
-                                                            totalDy = 0f
-                                                        }
-                                                    }
-                                                }
-                                            } while (event.changes.any { it.pressed })
                                         }
                                     }
                             ) {
-                                // 1. Area Konten Web / Beranda dengan Jarak Top Bar Presisi agar Tidak Tertutup TopAppBar
+                                // 1. Area Konten Web Statis 100% (Tinggi Tetap Tanpa Resize SurfaceView -> 0% Glitch Hitam Saat Scroll)
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .padding(top = webTopPaddingDp)
+                                        .padding(top = staticWebTopPaddingDp)
                                         .background(OledBlack)
                                 ) {
                                     if (isOnNewTabPage) {
@@ -506,23 +461,15 @@ fun BrowserScreen(
                                         BrowserGeckoView(
                                             activeSession = viewModel.getActiveSession(),
                                             isFullScreen = activeTabState.isFullScreen,
-                                            dynamicToolbarMaxHeightPx = 0,
-                                            verticalClippingPx = 0,
-                                            videoScaleX = if (activeTabState.isFullScreen) videoFitMode.scaleX else 1f,
-                                            videoScaleY = if (activeTabState.isFullScreen) videoFitMode.scaleY else 1f,
                                             modifier = Modifier.fillMaxSize()
                                         )
                                     }
                                 }
 
-                                // 2. Top Omnibox + Saran Riwayat & Bookmark ala Chrome + Indikator Progres Instalasi Ekstensi
+                                // 2. Top Omnibox Statis + Saran Riwayat & Bookmark ala Chrome
                                 if (!activeTabState.isFullScreen) {
                                     Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .offset {
-                                                IntOffset(0, (animatedTopOffsetPx - toolbarHeightPx).roundToInt())
-                                            }
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
                                         BrowserOmnibox(
                                             currentUrl = activeTabState.url,
@@ -538,12 +485,6 @@ fun BrowserScreen(
                                             isIncognito = activeTabState.isIncognito,
                                             historyList = historyEntries,
                                             bookmarkList = bookmarks,
-                                            onFocusStateChanged = { focused ->
-                                                isOmniboxFocused = focused
-                                                if (focused) {
-                                                    isToolbarVisible = true
-                                                }
-                                            },
                                             onNavigate = { viewModel.loadInput(it) },
                                             onHomeClick = { viewModel.navigateHome() },
                                             onReload = { viewModel.reload() },
@@ -592,7 +533,7 @@ fun BrowserScreen(
                                     }
                                 }
 
-                                // 3. Banner Progres Instalasi Ekstensi Live (0% - 100%) Saat Memasang dari Toko / Web
+                                // 3. Banner Progres Instalasi Ekstensi Live (0% - 100%)
                                 AnimatedVisibility(
                                     visible = !activeTabState.isFullScreen &&
                                         (installProgressPercent != null || !extensionStatusMessage.isNullOrBlank()),
@@ -600,7 +541,7 @@ fun BrowserScreen(
                                     exit = fadeOut(),
                                     modifier = Modifier
                                         .align(Alignment.TopCenter)
-                                        .padding(top = webTopPaddingDp + 8.dp, start = 14.dp, end = 14.dp)
+                                        .padding(top = staticWebTopPaddingDp + 8.dp, start = 14.dp, end = 14.dp)
                                 ) {
                                     Column(
                                         modifier = Modifier
@@ -653,7 +594,72 @@ fun BrowserScreen(
                                     }
                                 }
 
-                                // 4. Chip Autofill Cepat jika Situs Saat Ini Memiliki Sandi Tersimpan di Zenvora
+                                // 4. Tombol Mengambang "Putar di Player Native (ExoPlayer)" Saat Aliran Video Terdeteksi di Web
+                                val activeStream = detectedVideoStream
+                                AnimatedVisibility(
+                                    visible = !activeTabState.isFullScreen &&
+                                        activeStream != null &&
+                                        activeStream.streamUrl != dismissedStreamUrl,
+                                    enter = fadeIn(),
+                                    exit = fadeOut(),
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(bottom = if (matchingLoginForCurrentSite != null) 68.dp else 16.dp, start = 16.dp, end = 16.dp)
+                                ) {
+                                    activeStream?.let { stream ->
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(24.dp))
+                                                .background(DarkSurface)
+                                                .border(1.5.dp, ElectricOrange, RoundedCornerShape(24.dp))
+                                                .clickable {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    viewModel.openNativeVideoPlayer(stream)
+                                                }
+                                                .padding(start = 14.dp, end = 8.dp, top = 8.dp, bottom = 8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.PlayCircle,
+                                                contentDescription = null,
+                                                tint = ElectricOrange,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                                                Text(
+                                                    text = "Putar di Zenvora Native Player",
+                                                    color = TextPrimary,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = "Layar penuh mulus 20:9 & kontrol tidak ikut ter-zoom",
+                                                    color = ElectricOrange,
+                                                    fontSize = 10.sp
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            IconButton(
+                                                onClick = {
+                                                    dismissedStreamUrl = stream.streamUrl
+                                                },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Close,
+                                                    contentDescription = "Tutup",
+                                                    tint = TextSecondary,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 5. Chip Autofill Cepat jika Situs Saat Ini Memiliki Sandi Tersimpan di Zenvora
                                 AnimatedVisibility(
                                     visible = matchingLoginForCurrentSite != null,
                                     enter = fadeIn(),
@@ -715,7 +721,7 @@ fun BrowserScreen(
                                     }
                                 }
 
-                                // 5. Kontrol Mode Rasio Video Layar Penuh Redmi 9C (20:9) di Tengah Atas
+                                // 6. Kontrol Mode Rasio Video Layar Penuh (CSS object-fit Tanpa Men-Zoom Kontrol) + Tombol Player Native
                                 AnimatedVisibility(
                                     visible = activeTabState.isFullScreen && showVideoOverlayControls,
                                     enter = fadeIn(),
@@ -733,7 +739,7 @@ fun BrowserScreen(
                                             .border(1.dp, DarkOutline, RoundedCornerShape(20.dp))
                                             .padding(horizontal = 10.dp, vertical = 6.dp)
                                     ) {
-                                        RedmiVideoFitMode.entries.forEach { mode ->
+                                        WebVideoFitMode.entries.forEach { mode ->
                                             val isSelected = videoFitMode == mode
                                             Box(
                                                 contentAlignment = Alignment.Center,
@@ -743,6 +749,7 @@ fun BrowserScreen(
                                                     .clickable {
                                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                                         videoFitMode = mode
+                                                        viewModel.applyVideoObjectFit(mode.cssObjectFit)
                                                         lastVideoTouchMs = SystemClock.elapsedRealtime()
                                                     }
                                                     .padding(horizontal = 10.dp, vertical = 5.dp)
@@ -752,6 +759,34 @@ fun BrowserScreen(
                                                     color = if (isSelected) OledBlack else TextPrimary,
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+
+                                        detectedVideoStream?.let { stream ->
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(14.dp))
+                                                    .background(ElectricOrange)
+                                                    .clickable {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        viewModel.openNativeVideoPlayer(stream)
+                                                    }
+                                                    .padding(horizontal = 10.dp, vertical = 5.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.PlayCircle,
+                                                    contentDescription = null,
+                                                    tint = OledBlack,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = "Player Native",
+                                                    color = OledBlack,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.ExtraBold
                                                 )
                                             }
                                         }

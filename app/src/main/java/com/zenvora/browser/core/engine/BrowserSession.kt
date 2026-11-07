@@ -1,10 +1,12 @@
 package com.zenvora.browser.core.engine
 
 import android.content.Context
+import android.net.Uri
 import com.zenvora.browser.core.adblock.AdblockEngine
 import com.zenvora.browser.data.model.BrowserTab
 import com.zenvora.browser.data.model.SecurityInfo
 import com.zenvora.browser.data.model.SecurityStatus
+import com.zenvora.browser.ui.components.DetectedVideoStream
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -50,6 +52,9 @@ class BrowserSession(
 
     private val _securityInfo = MutableStateFlow(SecurityInfo())
     val securityInfo: StateFlow<SecurityInfo> = _securityInfo.asStateFlow()
+
+    private val _detectedVideoStream = MutableStateFlow<DetectedVideoStream?>(null)
+    val detectedVideoStream: StateFlow<DetectedVideoStream?> = _detectedVideoStream.asStateFlow()
 
     private var isOpen = false
     private var desktopModeEnabled = false
@@ -129,6 +134,9 @@ class BrowserSession(
         }
         geckoSession.progressDelegate = object : GeckoSession.ProgressDelegate {
             override fun onPageStart(session: GeckoSession, url: String) {
+                if (!url.startsWith("https://zenvora.stream.detect/")) {
+                    _detectedVideoStream.value = null
+                }
                 applyDesktopSettings(desktopModeEnabled, url)
                 _tabState.update {
                     it.copy(
@@ -181,6 +189,24 @@ class BrowserSession(
                 request: GeckoSession.NavigationDelegate.LoadRequest
             ): GeckoResult<AllowOrDeny> {
                 val targetUri = request.uri
+
+                // 0a. Tangkap sinyal deteksi aliran video (.m3u8 / .mp4 / .mpd) lintas-iframe untuk Zenvora Native Player
+                if (targetUri.startsWith("https://zenvora.stream.detect/")) {
+                    try {
+                        val parsed = Uri.parse(targetUri)
+                        val streamSrc = parsed.getQueryParameter("src").orEmpty()
+                        val referer = parsed.getQueryParameter("ref").orEmpty().ifEmpty { _tabState.value.url }
+                        if (streamSrc.startsWith("http")) {
+                            _detectedVideoStream.value = DetectedVideoStream(
+                                streamUrl = streamSrc,
+                                refererUrl = referer,
+                                title = _tabState.value.title.ifEmpty { "Video Streaming" }
+                            )
+                        }
+                    } catch (_: Exception) {}
+                    return GeckoResult.fromValue(AllowOrDeny.DENY)
+                }
+
                 applyDesktopSettings(desktopModeEnabled, targetUri)
 
                 // 0. Tangkap instalasi langsung file ekstensi .xpi dari Zenvora / Mozilla Add-ons Store
@@ -319,6 +345,48 @@ class BrowserSession(
         applyDesktopSettings(desktopModeEnabled, uri)
         val normalized = rewriteMobileUrlForDesktop(uri)
         geckoSession.loadUri(normalized)
+    }
+
+    fun applyVideoObjectFit(objectFitValue: String) {
+        try {
+            val safeFit = JSONObject.quote(objectFitValue)
+            val js = """
+                javascript:(function(){
+                  try {
+                    var mode = $safeFit;
+                    var vids = document.querySelectorAll('video');
+                    for (var i = 0; i < vids.length; i++) {
+                      vids[i].style.setProperty('object-fit', mode, 'important');
+                    }
+                    var frames = document.querySelectorAll('iframe');
+                    for (var j = 0; j < frames.length; j++) {
+                      try {
+                        if (frames[j].contentWindow) {
+                          frames[j].contentWindow.postMessage({ zenvoraObjectFit: mode }, '*');
+                        }
+                      } catch (e) {}
+                    }
+                  } catch (e) {}
+                })();
+            """.trimIndent().replace("\n", " ")
+            geckoSession.loadUri(js)
+        } catch (_: Exception) {}
+    }
+
+    fun pauseWebVideos() {
+        try {
+            val js = """
+                javascript:(function(){
+                  try {
+                    var vids = document.querySelectorAll('video');
+                    for (var i = 0; i < vids.length; i++) {
+                      vids[i].pause();
+                    }
+                  } catch (e) {}
+                })();
+            """.trimIndent().replace("\n", " ")
+            geckoSession.loadUri(js)
+        } catch (_: Exception) {}
     }
 
     fun autofillCredentials(username: String, passwordValue: String) {

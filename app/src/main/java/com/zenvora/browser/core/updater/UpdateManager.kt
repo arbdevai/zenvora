@@ -55,7 +55,7 @@ class UpdateManager(private val context: Context) {
         .build()
 
     private val updatesDir: File
-        get() = File(context.cacheDir, "updates").apply { if (!exists()) mkdirs() }
+        get() = File(context.externalCacheDir ?: context.cacheDir, "updates").apply { if (!exists()) mkdirs() }
 
     /**
      * Mendeteksi arsitektur CPU utama perangkat (fokus pada arm64-v8a dan armeabi-v7a).
@@ -174,6 +174,7 @@ class UpdateManager(private val context: Context) {
     }
 
     suspend fun checkForUpdates(releasesApiUrl: String) = withContext(Dispatchers.IO) {
+        cleanOldUpdateFiles()
         val cachedInfo = _availableUpdateBadge.value
         if (cachedInfo != null && isNewerVersion(cachedInfo.versionName, BuildConfig.VERSION_NAME)) {
             _updateState.value = UpdateState.UpdateAvailable(cachedInfo)
@@ -181,7 +182,6 @@ class UpdateManager(private val context: Context) {
         }
 
         _updateState.value = UpdateState.Checking
-        cleanOldUpdateFiles()
 
         try {
             val request = Request.Builder()
@@ -247,36 +247,83 @@ class UpdateManager(private val context: Context) {
             return@withContext
         }
 
+        // Bersihkan seluruh berkas APK versi lama di direktori updates maupun cacheDir agar kuota memori lega
         try {
-            if (partFile.exists()) partFile.delete()
-
-            val request = Request.Builder().url(info.downloadUrl).build()
-            val response = httpClient.newCall(request).execute()
-
-            if (!response.isSuccessful) {
-                _updateState.value = UpdateState.Error("Unduhan gagal: HTTP ${response.code}")
-                return@withContext
+            File(context.cacheDir, "updates").listFiles()?.forEach { it.delete() }
+            updatesDir.listFiles()?.forEach { file ->
+                if (file.name != partFile.name && file.name != targetApk.name) {
+                    file.delete()
+                }
             }
+        } catch (_: Exception) {}
 
-            val body = response.body ?: throw IllegalStateException("Badan respons unduhan kosong")
-            val totalBytes = if (info.fileSizeBytes > 0L) info.fileSizeBytes else body.contentLength()
+        try {
+            if (targetApk.exists()) targetApk.delete()
 
-            body.byteStream().use { input ->
-                FileOutputStream(partFile).use { output ->
-                    val buffer = ByteArray(64 * 1024)
-                    var bytesCopied = 0L
-                    var read: Int
+            var attempt = 0
+            val maxAttempts = 3
+            var totalBytes = info.fileSizeBytes
 
-                    while (input.read(buffer).also { read = it } != -1) {
-                        output.write(buffer, 0, read)
-                        bytesCopied += read
-                        val percent = if (totalBytes > 0) ((bytesCopied * 100) / totalBytes).toInt() else 0
-                        _updateState.value = UpdateState.Downloading(percent, bytesCopied, totalBytes)
+            while (attempt < maxAttempts) {
+                attempt++
+                val existingBytes = if (partFile.exists()) partFile.length() else 0L
+                if (totalBytes > 0L && existingBytes >= totalBytes) {
+                    break
+                }
+
+                val reqBuilder = Request.Builder().url(info.downloadUrl)
+                if (existingBytes > 0L) {
+                    reqBuilder.header("Range", "bytes=$existingBytes-")
+                }
+
+                httpClient.newCall(reqBuilder.build()).execute().use { response ->
+                    if (!response.isSuccessful && response.code != 206) {
+                        if (existingBytes > 0L) {
+                            partFile.delete()
+                            continue
+                        }
+                        _updateState.value = UpdateState.Error("Unduhan gagal: HTTP ${response.code}")
+                        return@withContext
                     }
-                    output.flush()
+
+                    val body = response.body ?: throw IllegalStateException("Badan respons unduhan kosong")
+                    val isResume = response.code == 206 && existingBytes > 0L
+                    if (!isResume && partFile.exists()) {
+                        partFile.delete()
+                    }
+                    if (totalBytes <= 0L) {
+                        val contentLen = body.contentLength()
+                        if (contentLen > 0L) {
+                            totalBytes = if (isResume) existingBytes + contentLen else contentLen
+                        }
+                    }
+
+                    var bytesCopied = if (isResume) existingBytes else 0L
+                    body.byteStream().use { input ->
+                        FileOutputStream(partFile, isResume).use { output ->
+                            val buffer = ByteArray(64 * 1024)
+                            var read: Int
+                            while (input.read(buffer).also { read = it } != -1) {
+                                output.write(buffer, 0, read)
+                                bytesCopied += read
+                                val percent = if (totalBytes > 0L) {
+                                    ((bytesCopied * 100L) / totalBytes).toInt().coerceIn(0, 100)
+                                } else {
+                                    0
+                                }
+                                _updateState.value = UpdateState.Downloading(percent, bytesCopied, totalBytes)
+                            }
+                            output.flush()
+                        }
+                    }
+                }
+
+                if (totalBytes <= 0L || partFile.length() >= totalBytes) {
+                    break
                 }
             }
 
+            if (targetApk.exists()) targetApk.delete()
             if (partFile.renameTo(targetApk) && isApkValid(targetApk, info.fileSizeBytes)) {
                 _updateState.value = UpdateState.ReadyToInstall(targetApk)
             } else {
@@ -286,7 +333,6 @@ class UpdateManager(private val context: Context) {
             }
 
         } catch (e: Exception) {
-            if (partFile.exists()) partFile.delete()
             _updateState.value = UpdateState.Error("Proses unduhan terputus: ${e.message}")
         }
     }
@@ -314,16 +360,10 @@ class UpdateManager(private val context: Context) {
 
     private fun isApkValid(apkFile: File, expectedBytes: Long = 0L): Boolean {
         if (!apkFile.exists() || !apkFile.isFile || apkFile.length() < 10_000_000) return false
-        if (expectedBytes > 0L && Math.abs(apkFile.length() - expectedBytes) > 2048L) return false
+        if (expectedBytes > 0L && Math.abs(apkFile.length() - expectedBytes) > 65536L) return false
 
         return try {
-            val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_ACTIVITIES
-            } else {
-                @Suppress("DEPRECATION")
-                PackageManager.GET_SIGNATURES or PackageManager.GET_ACTIVITIES
-            }
-            val pkg = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, flags) ?: return false
+            val pkg = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0) ?: return false
             if (pkg.packageName != context.packageName) return false
             val remoteVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 pkg.longVersionCode

@@ -1,9 +1,9 @@
 # Project State & Session Memory
 
 ## Status Saat Ini
-- **Fase Aktif:** Fase 10: Local IP HTTP Resolver, Password Manager & Autofill, TopAppBar Content Spacing, Chrome Omnibox Suggestions, Real-Time 0-100% Extension Installer & Zenvora Store Integrator (v1.9.0)
-- **Versi Terakhir:** v1.9.0 (versionCode: 10900)
-- **Status CI Terakhir:** Siap Commit & Push v1.9.0 ke GitHub Actions
+- **Fase Aktif:** Fase 11: Zenvora Native Media3 ExoPlayer Streaming Engine, Pure Gecko Web Layout, Non-Zooming CSS `object-fit` Aspect Ratio, Static Zero-Glitch SurfaceView & HTTP Range Resumable Updater (v2.0.0)
+- **Versi Terakhir:** v2.0.0 (versionCode: 20000)
+- **Status CI Terakhir:** Siap Commit & Push v2.0.0 ke GitHub Actions
 - **Remote Repo:** https://github.com/arbdevai/zenvora
 
 ## Fitur yang Selesai Tuntas (Vertical Slices)
@@ -53,7 +53,12 @@
   5. Ubah `ExtensionManager.installFromUrl` agar mengunduh paket `.xpi` melalui `OkHttpClient` sambil memancarkan `installProgressPercent` (`0% - 100%`) secara real-time ke `ExtensionsSheet` dan banner mengambang di `BrowserScreen`.
   6. Di `BrowserSession.kt` dan `content_shield.js`, gunakan Desktop Firefox 136 User-Agent khusus saat membuka `addons.mozilla.org`, ubah tombol `"Add to Firefox"` menjadi **"Pasang ke Zenvora"**, dan intercept klik pada tombol instal di fase capture untuk langsung memicu pengunduhan `.xpi` (termasuk ekstensi seperti **Claude Sidebar Free**).
   7. Perbaiki bug looping masuk fullscreen kembali saat tombol exit fullscreen diklik (`isAlreadyFs` + `lastFullscreenExitMs` guard), perbaiki bug video JWPlayer/Plyr/Video.js mengecil di tengah-atas saat rotasi landscape (`triggerPlayerResizeSync` + CSS `.jwplayer.jw-flag-fullscreen video`), hapus pemindai `div` kosong `z-index` yang merusak layout web modern, kunci `showTopBar` saat `isOmniboxFocused == true`, dan aktifkan **Smart uBlock Origin Co-Pilot Mode** (`O(1) Set` di `background.js` + `externalAdblockActive` di `BrowserSession.kt`).
+- *Catatan #22:* **Glitch Hitam Bawah Saat Scroll, Kontrol Player Ikut Ke-Zoom Saat Rasio 20:9, Bug Player Web Streaming (`SUPJAV.COM`), & Gagal Integritas Update 91 MB (v1.9.0 -> Fixed v2.0.0)**:
+  1. Kunci tinggi `BrowserGeckoView` secara statis (`staticWebTopPaddingDp = 57.dp` di luar mode fullscreen) tanpa mengubah ukuran `SurfaceView` saat scroll -> menghilangkan 100% glitch hitam di bagian bawah saat scroll ke atas/bawah sekaligus menjaga halaman web tidak pernah tertutup TopAppBar.
+  2. Hapus `.graphicsLayer { scaleX; scaleY }` dari `BrowserGeckoView.kt` dan ganti kontrol rasio video web dengan injeksi CSS `object-fit` (`contain`, `cover`, `fill`) lintas-iframe (`postMessage` ke semua `iframe`) sehingga **hanya gambar videonya yang melebar ke 20:9 sedangkan tombol kontrol player dan subtitle tidak pernah ikut ter-zoom**.
+  3. Tambahkan library **AndroidX Media3 ExoPlayer (`1.5.1`)** dan komponen `NativeVideoPlayerOverlay.kt` + sniffer aliran video `.m3u8` / `.mp4` / `.mpd` lintas-iframe (`https://zenvora.stream.detect/`) lengkap dengan penerusan header `Referer` & `Origin` otomatis. Saat video diputar di situs mana pun (termasuk `SUPJAV.COM`), user cukup klik **"Putar di Zenvora Native Player"** untuk menonton dengan pemutar native Android yang 100% bebas bug layout web.
+  4. Pindahkan direktori unduhan `UpdateManager.kt` ke `externalCacheDir`, panggil `cleanOldUpdateFiles()` di awal `checkForUpdates()` & `downloadUpdate()`, dan tambahkan **HTTP Range Auto-Resume** (3x retry) agar unduhan APK 91 MB tidak pernah gagal integritas.
 
 ## Tugas Aktif Selanjutnya (Next Actions)
 1. Verifikasi sintaksis `python3 /home/coder/.gemini/config/skills/android-compose-builder/scripts/verify_kotlin_syntax.py .` (0 hard errors).
-2. Commit dan push rilis `v1.9.0` ke `origin main` serta pantau workflow GitHub Actions hingga selesai.
+2. Commit dan push rilis `v2.0.0` ke `origin main` serta pantau workflow GitHub Actions hingga selesai.
