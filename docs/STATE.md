@@ -1,9 +1,9 @@
 # Project State & Session Memory
 
 ## Status Saat Ini
-- **Fase Aktif:** Fase 12: CSP-Free Cross-Iframe Video Scale & Aspect Ratio Controller, Automatic Password Capture & Save Prompt Banner, and 3-Layer Next-Gen Adblock Shield (v2.1.0)
-- **Versi Terakhir:** v2.1.0 (versionCode: 20100)
-- **Status CI Terakhir:** Siap Commit & Push v2.1.0 ke GitHub Actions
+- **Fase Aktif:** Fase 13: Standalone CSS `scale` Video Aspect Controller, Orphaned Transparent Ad-Overlay Unblocker & Dummy `window.open` Proxy, Anti-Looping BackHandler, Positive-Offset Auto-Hiding TopAppBar, and Chrome 2-Column Grid Tab Switcher with Live Web Previews (v2.2.0)
+- **Versi Terakhir:** v2.2.0 (versionCode: 20200)
+- **Status CI Terakhir:** Siap Commit & Push v2.2.0 ke GitHub Actions
 - **Remote Repo:** https://github.com/arbdevai/zenvora
 
 ## Fitur yang Selesai Tuntas (Vertical Slices)
@@ -62,7 +62,13 @@
   1. `geckoSession.loadUri("javascript:...")` diblokir oleh `Content-Security-Policy` (CSP) di YouTube (`m.youtube.com`) dan situs modern, serta `object-fit: cover` saja tidak memperlebar kotak `<video>` YouTube yang dikunci inline ke 16:9. Solusi permanen: tambahkan izin `"tabs"` di `manifest.json`, kirim sinyal komando melalui `commandSession` (`https://zenvora.cmd.local/exec?cmd=video_fit&mode=...`) yang ditangkap `background.js` lalu disiarkan via `browser.tabs.sendMessage` ke `content_shield.js` di seluruh `iframe`, dan terapkan CSS `transform: scale(1.25, 1.03)` (`Pas Layar 20:9`) atau `scale(1.26, 1.26)` (`Zoom Penuh`) **khusus pada elemen `<video>`** sehingga video penuh 20:9 sementara tombol kontrol player tetap 100% utuh dan tidak ikut ter-zoom.
   2. Tambahkan pendeteksi form login otomatis di `content_shield.js` (`submit`, `Enter`, dan klik tombol login) yang menangkap `(host, url, username, password)` dan mengirimkannya ke `BrowserSession.onLoadRequest` (`https://zenvora.auth.capture/`), lalu tampilkan banner otomatis **"Simpan sandi untuk [host]?"** di `BrowserScreen.kt` beserta autofill bebas CSP via `browser.tabs.sendMessage`.
   3. Perkuat Adblock dengan arsitektur Next-Gen 3-Lapis: perluas daftar domain jaringan iklan/pop-under/judol di `native/adblock_core/src/lib.rs` & `background.js` (`O(1) Set`), blokir script pihak ketiga dari TLD mencurigakan (`.icu`, `.cfd`, `.sbs`, `.buzz`, `.loan`, `.men`, `.hair`, `.skin`, `.rest`), cegah click-hijacking `HTMLAnchorElement.prototype.click` di `document_start`, tambahkan auto-skipper iklan video YouTube, dan pasang filter kosmetik presisi tinggi yang hanya menyembunyikan slot iklan eksplisit tanpa merusak layout web modern.
+- *Catatan #24:* **Bug Rasio Video di Plyr/FluidPlayer, Pemutar Ketutup Elemen Transparan, Looping BackHandler di Beranda, Auto-Hide TopAppBar & Grid Tab Preview ala Chrome (v2.1.0 -> Fixed v2.2.0)**:
+  1. Ganti `transform: scale(...)` dengan properti CSS independen `scale` (`1.25 1.03` / `1.26 1.26`) dan buka batasan `overflow` / `aspect-ratio` pada `.plyr__video-wrapper`, `.fluid_video_wrapper`, `.jw-media` agar pemutar yang menggunakan `transform: translate(-50%, -50%)` (seperti Fluid Player di `podjav.tv`, Plyr di `missav.ws`, dan Streamtape) tidak bergeser ke pojok kanan bawah atau terpotong di kotak 16:9.
+  2. Ganti `window.open = () => null` menjadi *Dummy Window Object* (`{ closed: false, focus(){}, close(){} }`) dan tambahkan *Orphaned Transparent Overlay Unblocker* berbasis `document.elementsFromPoint(x, y)` agar pemutar video yang tertutup layer transparan yatim-piatu (akibat script iklannya diblokir) langsung terbuka dan memutar video saat diketuk.
+  3. Perbaiki `BackHandler` di `BrowserScreen.kt` (nonaktifkan pencegatan `canGoBack` saat `isOnNewTabPage == true` agar tidak looping kembali ke web dari Beranda) dan tambahkan `BackHandler(enabled = isFocused || showOverflowMenu)` di `BrowserOmnibox.kt`.
+  4. Aktifkan kembali *Auto-Hiding TopAppBar* saat scroll ke bawah menggunakan `Modifier.offset` ber-nilai positif (`0f` s/d `+57.dp`) sehingga tinggi `SurfaceView` tetap 100% konstan (`H`) dan batas bawah selalu `H + offset >= H` (0% glitch hitam di bawah).
+  5. Rombak `TabOverviewSheet.kt` menjadi **Grid 2 Kolom (`LazyVerticalGrid`)** ala Google Chrome Android lengkap dengan tangkapan layar live (`geckoView.capturePixels()`) dari halaman web aktif.
 
 ## Tugas Aktif Selanjutnya (Next Actions)
 1. Verifikasi sintaksis `python3 /home/coder/.gemini/config/skills/android-compose-builder/scripts/verify_kotlin_syntax.py .` (0 hard errors).
-2. Commit dan push rilis `v2.1.0` ke `origin main` serta pantau workflow GitHub Actions hingga selesai.
+2. Commit dan push rilis `v2.2.0` ke `origin main` serta pantau workflow GitHub Actions hingga selesai.

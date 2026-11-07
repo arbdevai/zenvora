@@ -1,5 +1,6 @@
 package com.zenvora.browser.ui.components
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
@@ -142,6 +143,14 @@ fun BrowserOmnibox(
     var showOverflowMenu by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val haptic = LocalHapticFeedback.current
+
+    BackHandler(enabled = isFocused || showOverflowMenu) {
+        if (showOverflowMenu) {
+            showOverflowMenu = false
+        } else if (isFocused) {
+            focusManager.clearFocus()
+        }
+    }
 
     LaunchedEffect(currentUrl) {
         if (!isFocused) {

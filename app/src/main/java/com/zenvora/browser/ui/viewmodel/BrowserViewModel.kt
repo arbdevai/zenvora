@@ -1,6 +1,7 @@
 package com.zenvora.browser.ui.viewmodel
 
 import android.app.Application
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.zenvora.browser.core.download.BrowserDownloadManager
@@ -106,6 +107,9 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
 
     private val _tabs = MutableStateFlow<List<BrowserTab>>(emptyList())
     val tabs: StateFlow<List<BrowserTab>> = _tabs.asStateFlow()
+
+    private val _tabThumbnails = MutableStateFlow<Map<String, ImageBitmap>>(emptyMap())
+    val tabThumbnails: StateFlow<Map<String, ImageBitmap>> = _tabThumbnails.asStateFlow()
 
     private val _activeTabId = MutableStateFlow<String>("")
     val activeTabId: StateFlow<String> = _activeTabId.asStateFlow()
@@ -404,9 +408,17 @@ class BrowserViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun updateTabThumbnail(tabId: String, bitmap: ImageBitmap) {
+        if (tabId.isBlank()) return
+        _tabThumbnails.update { current ->
+            current + (tabId to bitmap)
+        }
+    }
+
     fun closeTab(tabId: String) {
         val session = sessionsMap.remove(tabId)
         session?.close()
+        _tabThumbnails.update { it - tabId }
 
         val remainingTabs = _tabs.value.filter { it.id != tabId }
         _tabs.value = remainingTabs

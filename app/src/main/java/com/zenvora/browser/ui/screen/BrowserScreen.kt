@@ -8,6 +8,8 @@ import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -27,6 +29,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
@@ -45,6 +48,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,12 +62,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -120,6 +127,7 @@ fun BrowserScreen(
 ) {
     val activeTabState by viewModel.activeTabState.collectAsStateWithLifecycle()
     val tabs by viewModel.tabs.collectAsStateWithLifecycle()
+    val tabThumbnails by viewModel.tabThumbnails.collectAsStateWithLifecycle()
     val activeTabId by viewModel.activeTabId.collectAsStateWithLifecycle()
     val securityInfo by viewModel.securityInfo.collectAsStateWithLifecycle()
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
@@ -147,6 +155,11 @@ fun BrowserScreen(
     var currentPage by remember { mutableStateOf(ActiveFullScreenPage.BROWSER) }
     var dismissedAutofillHost by remember { mutableStateOf("") }
     var dismissedStreamUrl by remember { mutableStateOf("") }
+    var captureTrigger by remember { mutableIntStateOf(0) }
+
+    var isToolbarVisible by remember { mutableStateOf(true) }
+    var isOmniboxFocused by remember { mutableStateOf(false) }
+    var lastToolbarToggleMs by remember { mutableLongStateOf(0L) }
 
     var videoFitMode by remember { mutableStateOf(WebVideoFitMode.STANDAR_16_9) }
     var showVideoOverlayControls by remember { mutableStateOf(true) }
@@ -157,6 +170,11 @@ fun BrowserScreen(
     }
 
     val isOnNewTabPage = activeTabState.url == "about:blank" || activeTabState.url.isEmpty()
+
+    // Tampilkan kembali TopAppBar saat berpindah URL atau berada di Beranda
+    LaunchedEffect(activeTabState.url, isOnNewTabPage) {
+        isToolbarVisible = true
+    }
 
     // Bersihkan otomatis pesan sukses instalasi ekstensi setelah 4.5 detik
     LaunchedEffect(installProgressPercent, extensionStatusMessage) {
@@ -217,14 +235,13 @@ fun BrowserScreen(
         }
     }
 
-    // Seluruh navigasi kembali dikendalikan oleh tombol Back fisik/gesture HP
+    // Seluruh navigasi kembali dikendalikan oleh tombol Back fisik/gesture HP (Anti-Looping di Beranda)
     BackHandler(
         enabled = activeNativeVideoStream != null ||
             activeTabState.isFullScreen ||
             updateState !is UpdateState.Idle ||
             currentPage != ActiveFullScreenPage.BROWSER ||
             activeTabState.isFindInPageActive ||
-            activeTabState.canGoBack ||
             !isOnNewTabPage
     ) {
         when {
@@ -238,7 +255,16 @@ fun BrowserScreen(
         }
     }
 
-    // Tinggi statis 57.dp saat mode normal agar SurfaceView GeckoView TIDAK PERNAH berubah ukuran saat scroll (0% glitch hitam bawah!)
+    // Offset positif (0f s/d +57.dp) menjaga tinggi SurfaceView GeckoView tetap 100% konstan (H)
+    // dan batas bawah SurfaceView selalu >= H (H + offset >= H) -> 0% glitch hitam di bawah saat scroll!
+    val density = LocalDensity.current
+    val toolbarHeightPx = with(density) { 57.dp.toPx() }
+    val showTopBar = !activeTabState.isFullScreen && (isToolbarVisible || isOnNewTabPage || isOmniboxFocused)
+    val animatedTopOffsetPx by animateFloatAsState(
+        targetValue = if (showTopBar) toolbarHeightPx else 0f,
+        animationSpec = tween(durationMillis = 200),
+        label = "toolbarOffsetPx"
+    )
     val staticWebTopPaddingDp = if (activeTabState.isFullScreen) 0.dp else 57.dp
 
     val matchingLoginForCurrentSite = remember(savedLogins, activeTabState.url, dismissedAutofillHost) {
@@ -294,6 +320,7 @@ fun BrowserScreen(
                             TabOverviewSheet(
                                 tabs = tabs,
                                 activeTabId = activeTabId,
+                                tabThumbnails = tabThumbnails,
                                 onTabSelected = { tabId ->
                                     viewModel.selectTab(tabId)
                                     currentPage = ActiveFullScreenPage.BROWSER
@@ -428,7 +455,7 @@ fun BrowserScreen(
                                     .fillMaxSize()
                                     .clipToBounds()
                                     .background(OledBlack)
-                                    .pointerInput(activeTabState.isFullScreen) {
+                                    .pointerInput(isOnNewTabPage, activeTabState.isFullScreen, isOmniboxFocused) {
                                         awaitEachGesture {
                                             val down = awaitFirstDown(
                                                 requireUnconsumed = false,
@@ -437,14 +464,50 @@ fun BrowserScreen(
                                             if (activeTabState.isFullScreen && down.position.y < 220f) {
                                                 lastVideoTouchMs = SystemClock.elapsedRealtime()
                                             }
+                                            var prevY = down.position.y
+                                            var totalDy = 0f
+
+                                            do {
+                                                val event = awaitPointerEvent(pass = PointerEventPass.Initial)
+                                                val change = event.changes.firstOrNull { it.id == down.id }
+                                                    ?: event.changes.firstOrNull()
+                                                if (change != null && change.pressed && !isOnNewTabPage && !activeTabState.isFullScreen && !isOmniboxFocused) {
+                                                    val stepDy = change.position.y - prevY
+                                                    prevY = change.position.y
+
+                                                    if ((totalDy > 0f && stepDy < 0f) || (totalDy < 0f && stepDy > 0f)) {
+                                                        totalDy = stepDy
+                                                    } else {
+                                                        totalDy += stepDy
+                                                    }
+
+                                                    val now = SystemClock.elapsedRealtime()
+                                                    if (now - lastToolbarToggleMs > 360L) {
+                                                        if (totalDy < -85f && isToolbarVisible) {
+                                                            isToolbarVisible = false
+                                                            lastToolbarToggleMs = now
+                                                            totalDy = 0f
+                                                        } else if (totalDy > 85f && !isToolbarVisible) {
+                                                            isToolbarVisible = true
+                                                            lastToolbarToggleMs = now
+                                                            totalDy = 0f
+                                                        }
+                                                    }
+                                                }
+                                            } while (event.changes.any { it.pressed })
                                         }
                                     }
                             ) {
-                                // 1. Area Konten Web Statis 100% (Tinggi Tetap Tanpa Resize SurfaceView -> 0% Glitch Hitam Saat Scroll)
+                                // 1. Area Konten Web dengan Offset Positif (Tinggi SurfaceView 100% Konstan H & Batas Bawah H + offset >= H -> 0% Glitch Hitam Bawah!)
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .padding(top = staticWebTopPaddingDp)
+                                        .offset {
+                                            IntOffset(
+                                                x = 0,
+                                                y = if (activeTabState.isFullScreen) 0 else animatedTopOffsetPx.roundToInt()
+                                            )
+                                        }
                                         .background(OledBlack)
                                 ) {
                                     if (isOnNewTabPage) {
@@ -464,15 +527,28 @@ fun BrowserScreen(
                                         BrowserGeckoView(
                                             activeSession = viewModel.getActiveSession(),
                                             isFullScreen = activeTabState.isFullScreen,
+                                            isLoading = activeTabState.isLoading,
+                                            currentUrl = activeTabState.url,
+                                            captureTrigger = captureTrigger,
+                                            onThumbnailCaptured = { tabId, bmp ->
+                                                viewModel.updateTabThumbnail(tabId, bmp)
+                                            },
                                             modifier = Modifier.fillMaxSize()
                                         )
                                     }
                                 }
 
-                                // 2. Top Omnibox Statis + Saran Riwayat & Bookmark ala Chrome
+                                // 2. Top Omnibox Auto-Hide Mulus + Saran Riwayat & Bookmark ala Chrome
                                 if (!activeTabState.isFullScreen) {
                                     Column(
-                                        modifier = Modifier.fillMaxWidth()
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .offset {
+                                                IntOffset(
+                                                    x = 0,
+                                                    y = (animatedTopOffsetPx - toolbarHeightPx).roundToInt()
+                                                )
+                                            }
                                     ) {
                                         BrowserOmnibox(
                                             currentUrl = activeTabState.url,
@@ -488,6 +564,12 @@ fun BrowserScreen(
                                             isIncognito = activeTabState.isIncognito,
                                             historyList = historyEntries,
                                             bookmarkList = bookmarks,
+                                            onFocusStateChanged = { focused ->
+                                                isOmniboxFocused = focused
+                                                if (focused) {
+                                                    isToolbarVisible = true
+                                                }
+                                            },
                                             onNavigate = { viewModel.loadInput(it) },
                                             onHomeClick = { viewModel.navigateHome() },
                                             onReload = { viewModel.reload() },
@@ -505,7 +587,10 @@ fun BrowserScreen(
                                             onToggleDesktopMode = { viewModel.toggleDesktopMode() },
                                             onCheckUpdateClick = { viewModel.checkForUpdates() },
                                             onSecurityClick = { currentPage = ActiveFullScreenPage.SECURITY },
-                                            onTabsClick = { currentPage = ActiveFullScreenPage.TABS },
+                                            onTabsClick = {
+                                                captureTrigger++
+                                                currentPage = ActiveFullScreenPage.TABS
+                                            },
                                             onBookmarkClick = {
                                                 viewModel.toggleBookmark(activeTabState.url, activeTabState.title)
                                             },

@@ -390,13 +390,13 @@ class BrowserSession(
                       v.style.setProperty('transform-origin', 'center center', 'important');
                       if (mode === 'stretch_20_9') {
                         v.style.setProperty('object-fit', 'fill', 'important');
-                        v.style.setProperty('transform', 'scale(1.25, 1.03)', 'important');
+                        v.style.setProperty('scale', '1.25 1.03', 'important');
                       } else if (mode === 'zoom_20_9') {
                         v.style.setProperty('object-fit', 'cover', 'important');
-                        v.style.setProperty('transform', 'scale(1.26, 1.26)', 'important');
+                        v.style.setProperty('scale', '1.26 1.26', 'important');
                       } else {
                         v.style.setProperty('object-fit', 'contain', 'important');
-                        v.style.setProperty('transform', 'scale(1, 1)', 'important');
+                        v.style.setProperty('scale', '1 1', 'important');
                       }
                     }
                   } catch (e) {}
