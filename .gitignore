@@ -1,0 +1,15 @@
+.gradle/
+build/
+app/build/
+*.jks
+*.keystore
+release.keystore
+local.properties
+.idea/
+*.iml
+
+# Chroot Tooling Isolation (Anti-Leak ke Git)
+/scripts/
+*.part
+native/**/target/
+app/src/main/jniLibs/

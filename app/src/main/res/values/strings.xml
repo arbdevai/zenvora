@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Zenvora</string>
+    <string name="accessibility_service_label">Zenvora Gesture Engine</string>
+    <string name="accessibility_service_description">Menjalankan gestur gulir dan ketuk otomatis sesuai profil serta interval yang dikonfigurasi pengguna.</string>
+</resources>
